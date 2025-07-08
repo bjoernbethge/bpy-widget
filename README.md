@@ -20,9 +20,6 @@ Interactive Blender 3D viewport widget for notebooks with real-time Eevee Next r
 ## 📋 Requirements
 
 - Python 3.11+
-- Blender bpy module 4.4+ (`pip install bpy`)
-- Marimo (`pip install marimo`)
-- AnyWidget (`pip install anywidget`)
 
 ## 🛠️ Installation
 
