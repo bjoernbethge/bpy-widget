@@ -1,7 +1,7 @@
 [project]
 name = "bpy-widget"
 version = "0.1.0"
-description = "Add your description here"
+description = "Interactive Blender 3D viewport widget for notebooks with real-time Eevee Next rendering."
 readme = "README.md"
 authors = [
     { name = "Björn Bethge", email = "bjoern.bethge@gmail.com" }
@@ -11,6 +11,8 @@ dependencies = [
     "anywidget>=0.9.18",
     "bpy>=4.4.0",
     "traitlets>=5.14.3",
+    "polars>=1.19.0",
+    "loguru>=0.7.3",
 ]
 
 [build-system]

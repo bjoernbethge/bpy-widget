@@ -1,150 +1,316 @@
-class g {
-  constructor(t, e) {
-    this.canvas = t, this.model = e, this.isDragging = !1, this.lastX = 0, this.lastY = 0, this.lastUpdateTime = 0, this.UPDATE_INTERVAL = 33, this.sensitivity = 0.01, this.bindEvents();
+class CameraController {
+  constructor(canvas, model) {
+    this.canvas = canvas;
+    this.model = model;
+    this.isDragging = false;
+    this.lastX = 0;
+    this.lastY = 0;
+    this.lastUpdateTime = 0;
+    this.UPDATE_INTERVAL = 33;
+    this.sensitivity = 0.01;
+    this.bindEvents();
   }
+  
   bindEvents() {
-    this.bindMouseEvents(), this.bindTouchEvents(), this.bindWheelEvents(), this.bindContextMenu();
+    this.bindMouseEvents();
+    this.bindTouchEvents();
+    this.bindWheelEvents();
+    this.bindContextMenu();
   }
+  
   bindMouseEvents() {
-    this.canvas.addEventListener("mousedown", (t) => this.handleMouseDown(t)), this.canvas.addEventListener("mousemove", (t) => this.handleMouseMove(t)), this.canvas.addEventListener("mouseup", (t) => this.handleMouseUp(t)), this.canvas.addEventListener("mouseleave", (t) => this.handleMouseLeave(t));
+    this.canvas.addEventListener("mousedown", (e) => this.handleMouseDown(e));
+    this.canvas.addEventListener("mousemove", (e) => this.handleMouseMove(e));
+    this.canvas.addEventListener("mouseup", (e) => this.handleMouseUp(e));
+    this.canvas.addEventListener("mouseleave", (e) => this.handleMouseLeave(e));
   }
+  
   bindTouchEvents() {
-    this.canvas.addEventListener("touchstart", (t) => this.handleTouchStart(t)), this.canvas.addEventListener("touchmove", (t) => this.handleTouchMove(t)), this.canvas.addEventListener("touchend", (t) => this.handleTouchEnd(t));
+    this.canvas.addEventListener("touchstart", (e) => this.handleTouchStart(e));
+    this.canvas.addEventListener("touchmove", (e) => this.handleTouchMove(e));
+    this.canvas.addEventListener("touchend", (e) => this.handleTouchEnd(e));
   }
+  
   bindWheelEvents() {
-    this.canvas.addEventListener("wheel", (t) => this.handleWheel(t));
+    this.canvas.addEventListener("wheel", (e) => this.handleWheel(e));
   }
+  
   bindContextMenu() {
-    this.canvas.addEventListener("contextmenu", (t) => t.preventDefault());
+    this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   }
-  handleMouseDown(t) {
-    this.isDragging = !0;
-    const e = this.canvas.getBoundingClientRect();
-    this.lastX = t.clientX - e.left, this.lastY = t.clientY - e.top, this.canvas.style.cursor = "grabbing", t.preventDefault();
+  
+  handleMouseDown(e) {
+    this.isDragging = true;
+    const rect = this.canvas.getBoundingClientRect();
+    this.lastX = e.clientX - rect.left;
+    this.lastY = e.clientY - rect.top;
+    this.canvas.style.cursor = "grabbing";
+    e.preventDefault();
   }
-  handleMouseMove(t) {
+  
+  handleMouseMove(e) {
     if (!this.isDragging) return;
-    const e = this.canvas.getBoundingClientRect(), s = t.clientX - e.left, n = t.clientY - e.top;
-    this.updateCamera(s, n), t.preventDefault();
+    const rect = this.canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    this.updateCamera(x, y);
+    e.preventDefault();
   }
-  handleMouseUp(t) {
-    this.isDragging && (this.isDragging = !1, this.canvas.style.cursor = "grab", this.forceSave());
-  }
-  handleMouseLeave(t) {
-    this.isDragging && (this.isDragging = !1, this.canvas.style.cursor = "grab", this.forceSave());
-  }
-  handleTouchStart(t) {
-    if (t.touches.length === 1) {
-      this.isDragging = !0;
-      const e = this.canvas.getBoundingClientRect(), s = t.touches[0];
-      this.lastX = s.clientX - e.left, this.lastY = s.clientY - e.top, t.preventDefault();
+  
+  handleMouseUp(e) {
+    if (this.isDragging) {
+      this.isDragging = false;
+      this.canvas.style.cursor = "grab";
+      this.forceSave();
     }
   }
-  handleTouchMove(t) {
-    if (!this.isDragging || t.touches.length !== 1) return;
-    const e = this.canvas.getBoundingClientRect(), s = t.touches[0], n = s.clientX - e.left, i = s.clientY - e.top;
-    this.updateCamera(n, i), t.preventDefault();
+  
+  handleMouseLeave(e) {
+    if (this.isDragging) {
+      this.isDragging = false;
+      this.canvas.style.cursor = "grab";
+      this.forceSave();
+    }
   }
-  handleTouchEnd(t) {
-    this.isDragging && (this.isDragging = !1, this.forceSave());
+  
+  handleTouchStart(e) {
+    if (e.touches.length === 1) {
+      this.isDragging = true;
+      const rect = this.canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      this.lastX = touch.clientX - rect.left;
+      this.lastY = touch.clientY - rect.top;
+      e.preventDefault();
+    }
   }
-  handleWheel(t) {
-    t.preventDefault();
-    const e = t.deltaY > 0 ? 1.1 : 0.9, s = Math.max(2, Math.min(
-      20,
-      this.model.get("camera_distance") * e
+  
+  handleTouchMove(e) {
+    if (!this.isDragging || e.touches.length !== 1) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const touch = e.touches[0];
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+    this.updateCamera(x, y);
+    e.preventDefault();
+  }
+  
+  handleTouchEnd(e) {
+    if (this.isDragging) {
+      this.isDragging = false;
+      this.forceSave();
+    }
+  }
+  
+  handleWheel(e) {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 1.1 : 0.9;
+    const newDistance = Math.max(2, Math.min(20, this.model.get("camera_distance") * delta));
+    this.model.set("camera_distance", newDistance);
+    this.forceSave();
+  }
+  
+  updateCamera(x, y) {
+    const deltaX = x - this.lastX;
+    const deltaY = y - this.lastY;
+    
+    if (deltaX === 0 && deltaY === 0) return;
+    
+    const angleZ = this.model.get("camera_angle_z") - deltaX * this.sensitivity;
+    const angleX = Math.max(-1.5, Math.min(1.5, 
+      this.model.get("camera_angle_x") + deltaY * this.sensitivity
     ));
-    this.model.set("camera_distance", s), this.forceSave();
+    
+    this.model.set("camera_angle_z", angleZ);
+    this.model.set("camera_angle_x", angleX);
+    
+    this.lastX = x;
+    this.lastY = y;
+    this.throttledSave();
   }
-  updateCamera(t, e) {
-    const s = t - this.lastX, n = e - this.lastY;
-    if (s === 0 && n === 0) return;
-    const i = this.model.get("camera_angle_z") - s * this.sensitivity, r = Math.max(-1.5, Math.min(
-      1.5,
-      this.model.get("camera_angle_x") + n * this.sensitivity
-    ));
-    this.model.set("camera_angle_z", i), this.model.set("camera_angle_x", r), this.lastX = t, this.lastY = e, this.throttledSave();
-  }
+  
   throttledSave() {
-    const t = Date.now();
-    t - this.lastUpdateTime >= this.UPDATE_INTERVAL && (this.model.save_changes(), this.lastUpdateTime = t);
+    const now = Date.now();
+    if (now - this.lastUpdateTime >= this.UPDATE_INTERVAL) {
+      this.model.save_changes();
+      this.lastUpdateTime = now;
+    }
   }
+  
   forceSave() {
     this.model.save_changes();
   }
-  destroy() {
-  }
+  
+  destroy() {}
 }
-class v {
-  constructor(t) {
-    this.canvas = t, this.ctx = t.getContext("2d"), this.frameCount = 0, this.fpsTime = Date.now(), this.lastFps = 0, this.setupCanvas();
+
+class CanvasRenderer {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext("2d");
+    this.frameCount = 0;
+    this.fpsTime = Date.now();
+    this.lastFps = 0;
+    this.setupCanvas();
   }
+  
   setupCanvas() {
     this.canvas.style.cursor = "grab";
   }
-  updateDisplay(t, e, s) {
-    t && e > 0 && s > 0 ? (this.renderImage(t, e, s), this.updateFps()) : this.renderPlaceholder(e || 512, s || 512);
-  }
-  renderImage(t, e, s) {
-    (this.canvas.width !== e || this.canvas.height !== s) && (this.canvas.width = e, this.canvas.height = s);
-    try {
-      const n = atob(t), i = new Uint8Array(n.length);
-      for (let c = 0; c < i.length; c++)
-        i[c] = n.charCodeAt(c);
-      const r = new ImageData(new Uint8ClampedArray(i), e, s);
-      this.ctx.putImageData(r, 0, 0);
-    } catch (n) {
-      console.error("Failed to render image:", n), this.renderError(e, s, "Render Error");
+  
+  updateDisplay(imageData, width, height) {
+    if (imageData && width > 0 && height > 0) {
+      this.renderImage(imageData, width, height);
+      this.updateFps();
+    } else {
+      this.renderPlaceholder(width || 512, height || 512);
     }
   }
-  renderPlaceholder(t, e) {
-    this.canvas.width = t, this.canvas.height = e, this.ctx.fillStyle = "#333", this.ctx.fillRect(0, 0, t, e), this.ctx.fillStyle = "#999", this.ctx.font = "14px monospace", this.ctx.textAlign = "center", this.ctx.fillText("Drag to rotate • Scroll to zoom", t / 2, e / 2);
+  
+  renderImage(imageData, width, height) {
+    if (this.canvas.width !== width || this.canvas.height !== height) {
+      this.canvas.width = width;
+      this.canvas.height = height;
+    }
+    
+    try {
+      const binaryString = atob(imageData);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < bytes.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const imageDataObj = new ImageData(new Uint8ClampedArray(bytes), width, height);
+      this.ctx.putImageData(imageDataObj, 0, 0);
+    } catch (e) {
+      console.error("Failed to render image:", e);
+      this.renderError(width, height, "Render Error");
+    }
   }
-  renderError(t, e, s) {
-    this.ctx.fillStyle = "#500", this.ctx.fillRect(0, 0, t, e), this.ctx.fillStyle = "#f99", this.ctx.font = "14px monospace", this.ctx.textAlign = "center", this.ctx.fillText(s, t / 2, e / 2);
+  
+  renderPlaceholder(width, height) {
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.ctx.fillStyle = "#333";
+    this.ctx.fillRect(0, 0, width, height);
+    this.ctx.fillStyle = "#999";
+    this.ctx.font = "14px monospace";
+    this.ctx.textAlign = "center";
+    this.ctx.fillText("Drag to rotate • Scroll to zoom", width / 2, height / 2);
   }
+  
+  renderError(width, height, message) {
+    this.ctx.fillStyle = "#500";
+    this.ctx.fillRect(0, 0, width, height);
+    this.ctx.fillStyle = "#f99";
+    this.ctx.font = "14px monospace";
+    this.ctx.textAlign = "center";
+    this.ctx.fillText(message, width / 2, height / 2);
+  }
+  
   updateFps() {
     this.frameCount++;
-    const t = Date.now();
-    t - this.fpsTime >= 1e3 && (this.lastFps = this.frameCount, this.frameCount = 0, this.fpsTime = t);
+    const now = Date.now();
+    if (now - this.fpsTime >= 1000) {
+      this.lastFps = this.frameCount;
+      this.frameCount = 0;
+      this.fpsTime = now;
+    }
   }
+  
   getFps() {
     return this.lastFps;
   }
-  setCursor(t) {
-    this.canvas.style.cursor = t;
+  
+  setCursor(cursor) {
+    this.canvas.style.cursor = cursor;
   }
+  
   destroy() {
     this.ctx = null;
   }
 }
-const f = {
-  render({ model: a, el: t }) {
-    t.innerHTML = `
-            <div class="bpy-widget">
-                <canvas class="viewer-canvas"></canvas>
-                <div class="camera-info">
-                    <span class="render-time">Render: --ms</span> | 
-                    <span class="fps">-- FPS</span>
-                </div>
-            </div>
-        `;
-    const e = t.querySelector(".viewer-canvas"), s = t.querySelector(".render-time"), n = t.querySelector(".fps"), i = new v(e), r = new g(e, a);
-    function c() {
-      const l = a.get("image_data"), h = a.get("width"), u = a.get("height");
-      i.updateDisplay(l, h, u);
-      const d = i.getFps();
-      d > 0 && (n.textContent = `${d} FPS`);
+
+export default {
+  render({ model, el }) {
+    el.innerHTML = `
+      <div class="bpy-widget">
+        <div class="widget-controls">
+          <select class="engine-select">
+            <option value="BLENDER_EEVEE_NEXT">EEVEE Next</option>
+            <option value="CYCLES">Cycles</option>
+          </select>
+          <select class="device-select">
+            <option value="CPU">CPU</option>
+            <option value="GPU">GPU</option>
+          </select>
+        </div>
+        <canvas class="viewer-canvas"></canvas>
+        <div class="camera-info">
+          <span class="render-time">Render: --ms</span> | 
+          <span class="fps">-- FPS</span> |
+          <span class="engine-info">EEVEE Next</span>
+        </div>
+      </div>
+    `;
+    
+    const canvas = el.querySelector(".viewer-canvas");
+    const renderTime = el.querySelector(".render-time");
+    const fps = el.querySelector(".fps");
+    const engineSelect = el.querySelector('.engine-select');
+    const deviceSelect = el.querySelector('.device-select');
+    const engineInfo = el.querySelector('.engine-info');
+    
+    const renderer = new CanvasRenderer(canvas);
+    const controller = new CameraController(canvas, model);
+    
+    // Set initial values
+    engineSelect.value = model.get('render_engine');
+    deviceSelect.value = model.get('render_device');
+    engineInfo.textContent = model.get('render_engine').replace('BLENDER_', '').replace('_', ' ');
+    
+    // Handle engine change
+    engineSelect.addEventListener('change', (e) => {
+      model.set('render_engine', e.target.value);
+      model.save_changes();
+      engineInfo.textContent = e.target.value.replace('BLENDER_', '').replace('_', ' ');
+    });
+    
+    // Handle device change
+    deviceSelect.addEventListener('change', (e) => {
+      model.set('render_device', e.target.value);
+      model.save_changes();
+    });
+    
+    function updateDisplay() {
+      const imageData = model.get("image_data");
+      const width = model.get("width");
+      const height = model.get("height");
+      renderer.updateDisplay(imageData, width, height);
+      
+      const currentFps = renderer.getFps();
+      if (currentFps > 0) {
+        fps.textContent = `${currentFps} FPS`;
+      }
     }
-    function o() {
-      const h = a.get("status").match(/Rendered.*\((\d+)ms\)/);
-      h && (s.textContent = `Render: ${h[1]}ms`);
+    
+    function updateStatus() {
+      const status = model.get("status");
+      const match = status.match(/Rendered.*\((\d+)ms\)/);
+      if (match) {
+        renderTime.textContent = `Render: ${match[1]}ms`;
+      }
     }
-    return a.on("change:image_data", c), a.on("change:width", c), a.on("change:height", c), a.on("change:status", o), c(), o(), () => {
-      r.destroy(), i.destroy();
+    
+    model.on("change:image_data", updateDisplay);
+    model.on("change:width", updateDisplay);
+    model.on("change:height", updateDisplay);
+    model.on("change:status", updateStatus);
+    
+    updateDisplay();
+    updateStatus();
+    
+    return () => {
+      controller.destroy();
+      renderer.destroy();
     };
   }
-};
-export {
-  f as default
 };

@@ -1,8 +1,8 @@
 """
-Rendering functions for bpy widget
+Rendering functions for bpy widget - Fast & simple
 """
 import os
-import time
+import tempfile
 from typing import Optional, Tuple
 
 import bpy
@@ -10,9 +10,10 @@ import numpy as np
 
 
 def setup_rendering(width: int = 512, height: int = 512, engine: str = 'BLENDER_EEVEE_NEXT'):
-    """Configure render settings"""
+    """Configure render settings - simple and fast"""
     scene = bpy.context.scene
     
+    # Basic settings
     scene.render.engine = engine
     scene.render.resolution_x = width
     scene.render.resolution_y = height
@@ -22,47 +23,47 @@ def setup_rendering(width: int = 512, height: int = 512, engine: str = 'BLENDER_
     scene.render.image_settings.color_mode = 'RGBA'
     scene.render.image_settings.color_depth = '8'
     
-    # Compositing
-    scene.use_nodes = True
-    scene.render.use_compositing = True
-    
-    # Color management
-    scene.view_settings.view_transform = 'Standard'
-    scene.view_settings.look = 'None'
-    
-    # EEVEE Next optimizations
-    if engine == 'BLENDER_EEVEE_NEXT':
+    if engine == 'CYCLES':
+        # Cycles settings
+        scene.cycles.samples = 64
+        scene.cycles.device = 'CPU'  # Most compatible
+    else:
+        # EEVEE Next settings - optimized for speed
         scene.eevee.taa_render_samples = 16
         scene.eevee.use_raytracing = False
+        
+    # Simple color management
+    scene.view_settings.view_transform = 'Standard'
+    scene.view_settings.look = 'None'
 
 
 def render_to_pixels() -> Tuple[Optional[np.ndarray], int, int]:
-    """Render scene and return pixel array"""
-    from .temp_files import get_render_file
-    
+    """Render scene and return pixel array - fast version"""
     if not bpy.context.scene.camera:
         print("Warning: No camera found")
         return None, 0, 0
     
-    render_file = get_render_file()
+    # Direct render to temp file
+    temp_file = os.path.join(tempfile.gettempdir(), f"bpy_render_{os.getpid()}.png")
     
     try:
-        bpy.context.scene.render.filepath = render_file
+        bpy.context.scene.render.filepath = temp_file
         bpy.ops.render.render(write_still=True)
         
-        if not os.path.exists(render_file):
+        if not os.path.exists(temp_file):
             return None, 0, 0
         
-        # Load and convert pixels
-        temp_image = bpy.data.images.load(render_file)
+        # Load image data
+        temp_image = bpy.data.images.load(temp_file)
         width, height = temp_image.size
         
         if width <= 0 or height <= 0 or not temp_image.pixels:
             bpy.data.images.remove(temp_image)
             return None, 0, 0
         
-        # Get pixel data
-        pixel_data = np.zeros((height * width * 4), dtype=np.float32)
+        # Get pixel data efficiently
+        pixel_count = height * width * 4
+        pixel_data = np.empty(pixel_count, dtype=np.float32)
         temp_image.pixels.foreach_get(pixel_data)
         
         # Convert to uint8 array
@@ -73,30 +74,14 @@ def render_to_pixels() -> Tuple[Optional[np.ndarray], int, int]:
         # Cleanup
         bpy.data.images.remove(temp_image)
         
+        # Try to remove file (ignore errors)
+        try:
+            os.remove(temp_file)
+        except:
+            pass
+        
         return pixels_array, width, height
         
     except Exception as e:
         print(f"Render failed: {e}")
         return None, 0, 0
-
-
-def optimize_for_interactive():
-    """Optimize render settings for interactive use"""
-    scene = bpy.context.scene
-    
-    if scene.render.engine == 'BLENDER_EEVEE_NEXT':
-        scene.eevee.taa_render_samples = 8
-        scene.eevee.use_raytracing = False
-        scene.render.resolution_percentage = 75
-    elif scene.render.engine == 'CYCLES':
-        scene.cycles.samples = 32
-
-
-def set_render_samples(samples: int):
-    """Set render samples for current engine"""
-    scene = bpy.context.scene
-    
-    if scene.render.engine == 'CYCLES':
-        scene.cycles.samples = samples
-    elif scene.render.engine == 'BLENDER_EEVEE_NEXT':
-        scene.eevee.taa_render_samples = samples
