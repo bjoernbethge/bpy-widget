@@ -41,14 +41,7 @@ def main():
     - Active Object: {widget.active_object.name if widget.active_object else 'None'}
     """)
 
-    # Ensure widget is rendered before display
-    if not widget.is_initialized:
-        widget.initialize()
-
-    # Force a render
-    widget._update_camera_and_render()
-
-    # Display widget
+    # Display widget - automatic initialization happens via auto_init=True and __repr__
     widget
 
 

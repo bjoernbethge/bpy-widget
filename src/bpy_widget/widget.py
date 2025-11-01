@@ -4,8 +4,10 @@ Blender widget for Marimo - Simplified high-performance version
 import base64
 import multiprocessing
 import os
+import time
 import typing
 from pathlib import Path
+from typing import Optional
 
 import anywidget
 import numpy as np
@@ -162,6 +164,11 @@ class BpyWidget(anywidget.AnyWidget):
         self._pixel_array: typing.Optional[np.ndarray] = None
         self._just_initialized = False
 
+        # Debouncing infrastructure for render operations (timestamp-based, no threading)
+        self._last_render_time = 0.0
+        self._render_debounce_ms = 100  # Debounce delay in milliseconds
+        self._pending_render_request = False  # Flag to indicate pending render after debounce
+
         logger.info(f"BpyWidget created: {width}x{height}")
 
         # Check extension support
@@ -254,7 +261,19 @@ class BpyWidget(anywidget.AnyWidget):
     def _on_camera_change(self, change):
         """Handle camera parameter changes from frontend"""
         if self.is_initialized and not self._just_initialized:
-            self._update_camera_and_render()
+            # Check if pending render should be executed first
+            if self._pending_render_request:
+                current_time = time.time()
+                time_since_last_render = (current_time - self._last_render_time) * 1000.0
+                if time_since_last_render >= self._render_debounce_ms:
+                    # Enough time has passed, execute pending render
+                    self._last_render_time = current_time
+                    self._pending_render_request = False
+                    self._update_camera_and_render()
+                    return
+            
+            # Use debounced render - ensures we don't render on every tiny movement
+            self._debounced_render()
     
     @traitlets.observe('render_engine', 'render_device')
     def _on_render_settings_change(self, change):
@@ -273,10 +292,32 @@ class BpyWidget(anywidget.AnyWidget):
                 print(f"Render device changed to: {change['new']}")
             
             # Re-render with new settings
+            self._debounced_render()
+
+    def _debounced_render(self, force_immediate: bool = False):
+        """Schedule a debounced render operation using timestamp-based debouncing (no threading)"""
+        current_time = time.time()
+        time_since_last_render = (current_time - self._last_render_time) * 1000.0  # Convert to ms
+        
+        # If force immediate, render right away
+        if force_immediate:
+            self._pending_render_request = False
+            self._last_render_time = current_time
             self._update_camera_and_render()
+            return
+        
+        # Check if enough time has passed since last render
+        if time_since_last_render >= self._render_debounce_ms:
+            # Enough time has passed, render immediately
+            self._last_render_time = current_time
+            self._pending_render_request = False
+            self._update_camera_and_render()
+        else:
+            # Too soon, mark as pending - will be checked on next observer call
+            self._pending_render_request = True
 
     def _update_camera_and_render(self):
-        """Update camera and render"""
+        """Update camera and render (called after debounce or immediately)"""
         try:
             # Update camera
             update_camera_spherical(
@@ -300,6 +341,8 @@ class BpyWidget(anywidget.AnyWidget):
         except Exception as e:
             logger.error(f"Camera update failed: {e}")
             self.status = f"Error: {str(e)}"
+            import traceback
+            traceback.print_exc()
 
     def _update_display(self, pixels_array: np.ndarray, w: int, h: int):
         """Update display from pixel array"""
@@ -915,6 +958,26 @@ class BpyWidget(anywidget.AnyWidget):
         print(f"Resolution: {scene.render.resolution_x}x{scene.render.resolution_y}")
         print("==================\n")
 
+    def __repr__(self):
+        """Ensure initialization before display"""
+        # Lazy initialization check - ensure widget is initialized when displayed
+        # This helps in cases where auto_init might have failed or wasn't called
+        if not self.is_initialized and not hasattr(self, '_initialization_failed'):
+            try:
+                self.initialize()
+            except Exception as e:
+                # Mark as failed to avoid repeated attempts
+                self._initialization_failed = True
+                logger.error(f"Auto-initialization failed in __repr__: {e}")
+                return f"<BpyWidget: Initialization failed - {str(e)}>"
+        
+        # Return standard representation
+        return super().__repr__()
+
+    def __del__(self):
+        """Cleanup on widget destruction - reset pending render flag"""
+        if hasattr(self, '_pending_render_request'):
+            self._pending_render_request = False
 
 
 # Legacy alias
