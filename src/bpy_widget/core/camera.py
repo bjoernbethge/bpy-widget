@@ -8,15 +8,15 @@ import bpy
 import mathutils
 
 
-def setup_camera(distance: float = 8.0, target: Tuple[float, float, float] = (0, 0, 0)) -> bpy.types.Object:
+def setup_camera(distance: float = 10.0, target: Tuple[float, float, float] = (0, 0, 1)) -> bpy.types.Object:
     """Setup camera with spherical positioning around target"""
     # Remove existing camera if any
     if bpy.context.scene.camera:
         bpy.data.objects.remove(bpy.context.scene.camera, do_unlink=True)
     
-    # Default spherical coordinates
-    angle_x = 1.1  # elevation
-    angle_z = 0.785  # azimuth
+    # Default spherical coordinates for better initial view
+    angle_x = 0.8  # elevation (lower angle to see both objects better)
+    angle_z = -0.785  # azimuth (45 degrees from side)
     
     # Convert to cartesian
     x = target[0] + distance * math.cos(angle_x) * math.cos(angle_z)
@@ -38,7 +38,7 @@ def setup_camera(distance: float = 8.0, target: Tuple[float, float, float] = (0,
     return camera
 
 
-def update_camera_position(location: Tuple[float, float, float], target: Tuple[float, float, float] = (0, 0, 0)):
+def update_camera_position(location: Tuple[float, float, float], target: Tuple[float, float, float] = (0, 0, 1)):
     """Update camera position and look at target"""
     camera = bpy.context.scene.camera
     
@@ -56,7 +56,7 @@ def update_camera_position(location: Tuple[float, float, float], target: Tuple[f
         camera.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
 
 
-def update_camera_spherical(distance: float, angle_x: float, angle_z: float, target: Tuple[float, float, float] = (0, 0, 0)) -> bool:
+def update_camera_spherical(distance: float, angle_x: float, angle_z: float, target: Tuple[float, float, float] = (0, 0, 1)) -> bool:
     """Update camera position using spherical coordinates"""
     camera = bpy.context.scene.camera
     
@@ -84,7 +84,7 @@ def update_camera_spherical(distance: float, angle_x: float, angle_z: float, tar
     return True
 
 
-def calculate_spherical_from_position(location: Tuple[float, float, float], target: Tuple[float, float, float] = (0, 0, 0)) -> Tuple[float, float, float]:
+def calculate_spherical_from_position(location: Tuple[float, float, float], target: Tuple[float, float, float] = (0, 0, 1)) -> Tuple[float, float, float]:
     """Calculate spherical coordinates from cartesian position relative to target"""
     x = location[0] - target[0]
     y = location[1] - target[1]

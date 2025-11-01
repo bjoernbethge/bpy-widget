@@ -1,6 +1,7 @@
 """
 Lighting - Analog zu utils.py setup_lighting
 """
+from typing import Tuple
 import bpy
 
 
@@ -50,6 +51,56 @@ def setup_environment_lighting(strength=1.0):
     tree.links.new(bg_node.outputs['Background'], output.inputs['Surface'])
     
     return env_node
+
+
+def setup_lighting(
+    sun_energy: float = 3.0,
+    sun_location: Tuple[float, float, float] = (4, 4, 10),
+    add_fill_light: bool = False
+) -> None:
+    """
+    Setup basic lighting for the scene.
+
+    Args:
+        sun_energy: Energy of the sun light
+        sun_location: Location of the sun light
+        add_fill_light: Add a fill light for better illumination
+    """
+    # Add key light
+    bpy.ops.object.light_add(type='SUN', location=sun_location)
+    sun = bpy.context.object
+    sun.data.energy = sun_energy
+    sun.rotation_euler = (0.3, 0.3, 0)
+
+    if add_fill_light:
+        # Add fill light
+        bpy.ops.object.light_add(type='AREA', location=(-4, -4, 6))
+        fill = bpy.context.object
+        fill.data.energy = sun_energy * 0.3
+        fill.data.size = 5
+        fill.rotation_euler = (-0.3, -0.3, 0)
+
+
+def setup_world_background(
+    color: Tuple[float, float, float] = (0.8, 0.8, 0.9),
+    strength: float = 1.0
+) -> None:
+    """
+    Setup world background color.
+
+    Args:
+        color: Background color (R, G, B)
+        strength: Background strength
+    """
+    world = bpy.context.scene.world
+    if not world:
+        world = bpy.data.worlds.new("World")
+        bpy.context.scene.world = world
+
+    world.use_nodes = True
+    bg_node = world.node_tree.nodes["Background"]
+    bg_node.inputs["Color"].default_value = (*color, 1.0)
+    bg_node.inputs["Strength"].default_value = strength
 
 
 def setup_sun_light(energy=2.0, angle=0.785):

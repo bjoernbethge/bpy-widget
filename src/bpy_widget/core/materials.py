@@ -1,230 +1,111 @@
 """
-Materials - Simple and functional
+Materials - DRY and functional
 """
 import bpy
-from typing import Tuple, Optional, Union, List
+from typing import Dict, Tuple, Union
+
+ColorType = Union[Tuple[float, float, float], Tuple[float, float, float, float]]
 
 
-def create_material(name: str) -> bpy.types.Material:
-    """Create a basic material with nodes"""
-    mat = bpy.data.materials.new(name=name)
-    mat.use_nodes = True
-    return mat
+def _ensure_rgba(color: ColorType) -> Tuple[float, float, float, float]:
+    """Ensure color is RGBA format"""
+    return (*color, 1.0) if len(color) == 3 else color
 
 
-def create_simple_material(
+def create_material(
     name: str,
-    color: Tuple[float, float, float, float] = (0.8, 0.8, 0.8, 1.0)
-) -> bpy.types.Material:
-    """Create a simple material with just color"""
-    mat = create_material(name)
-    nodes = mat.node_tree.nodes
-    
-    bsdf = nodes["Principled BSDF"]
-    bsdf.inputs['Base Color'].default_value = color
-    
-    return mat
-
-
-def create_emission_material(
-    name: str,
-    color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
-    strength: float = 1.0
-) -> bpy.types.Material:
-    """Create an emission material"""
-    mat = create_material(name)
-    nodes = mat.node_tree.nodes
-    
-    bsdf = nodes["Principled BSDF"]
-    bsdf.inputs['Emission Color'].default_value = color
-    bsdf.inputs['Emission Strength'].default_value = strength
-    
-    return mat
-
-
-def create_glass_material(
-    name: str,
-    transmission: float = 1.0,
-    ior: float = 1.45,
-    roughness: float = 0.0,
-    base_color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
-) -> bpy.types.Material:
-    """Create glass material"""
-    mat = create_material(name)
-    nodes = mat.node_tree.nodes
-    
-    bsdf = nodes["Principled BSDF"]
-    bsdf.inputs['Base Color'].default_value = base_color
-    bsdf.inputs['Transmission Weight'].default_value = transmission
-    bsdf.inputs['IOR'].default_value = ior
-    bsdf.inputs['Roughness'].default_value = roughness
-    
-    return mat
-
-
-def create_metal_material(
-    name: str,
-    base_color: Tuple[float, float, float, float] = (0.8, 0.8, 0.8, 1.0),
-    roughness: float = 0.1,
-    metallic: float = 1.0
-) -> bpy.types.Material:
-    """Create metal material"""
-    mat = create_material(name)
-    nodes = mat.node_tree.nodes
-    
-    bsdf = nodes["Principled BSDF"]
-    bsdf.inputs['Base Color'].default_value = base_color
-    bsdf.inputs['Metallic'].default_value = metallic
-    bsdf.inputs['Roughness'].default_value = roughness
-    
-    return mat
-
-
-def create_transparent_material(
-    name: str,
-    alpha: float = 0.5,
-    base_color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
-) -> bpy.types.Material:
-    """Create transparent material"""
-    mat = create_material(name)
-    mat.blend_method = 'BLEND'
-    nodes = mat.node_tree.nodes
-    
-    bsdf = nodes["Principled BSDF"]
-    bsdf.inputs['Base Color'].default_value = base_color
-    bsdf.inputs['Alpha'].default_value = alpha
-    
-    return mat
-
-
-def create_gradient_material(
-    name: str,
-    color1: Tuple[float, float, float, float] = (0.0, 0.0, 1.0, 1.0),
-    color2: Tuple[float, float, float, float] = (1.0, 0.0, 0.0, 1.0)
-) -> bpy.types.Material:
-    """Create material with gradient"""
-    mat = create_material(name)
-    nodes = mat.node_tree.nodes
-    links = mat.node_tree.links
-    
-    # Add gradient texture
-    tex_coord = nodes.new('ShaderNodeTexCoord')
-    gradient = nodes.new('ShaderNodeTexGradient')
-    color_ramp = nodes.new('ShaderNodeValToRGB')
-    
-    # Position nodes
-    tex_coord.location = (-400, 0)
-    gradient.location = (-200, 0)
-    color_ramp.location = (0, 0)
-    
-    # Set colors
-    color_ramp.color_ramp.elements[0].color = color1
-    color_ramp.color_ramp.elements[1].color = color2
-    
-    # Connect nodes
-    links.new(tex_coord.outputs['Generated'], gradient.inputs['Vector'])
-    links.new(gradient.outputs['Fac'], color_ramp.inputs['Fac'])
-    links.new(color_ramp.outputs['Color'], nodes['Principled BSDF'].inputs['Base Color'])
-    
-    return mat
-
-
-def create_toon_material(
-    name: str,
-    base_color: Tuple[float, float, float, float] = (0.8, 0.8, 0.8, 1.0),
-    roughness: float = 0.5
-) -> bpy.types.Material:
-    """Create toon-style material"""
-    mat = create_material(name)
-    nodes = mat.node_tree.nodes
-    links = mat.node_tree.links
-    
-    # Clear existing
-    nodes.clear()
-    
-    # Create nodes
-    output = nodes.new('ShaderNodeOutputMaterial')
-    diffuse = nodes.new('ShaderNodeBsdfDiffuse')
-    color_ramp = nodes.new('ShaderNodeValToRGB')
-    shader_to_rgb = nodes.new('ShaderNodeShaderToRGB')
-    
-    # Position
-    diffuse.location = (-200, 0)
-    shader_to_rgb.location = (0, 0)
-    color_ramp.location = (200, 0)
-    output.location = (400, 0)
-    
-    # Set values
-    diffuse.inputs['Color'].default_value = base_color
-    diffuse.inputs['Roughness'].default_value = roughness
-    
-    # Configure color ramp for toon effect
-    color_ramp.color_ramp.interpolation = 'CONSTANT'
-    
-    # Connect
-    links.new(diffuse.outputs['BSDF'], shader_to_rgb.inputs['Shader'])
-    links.new(shader_to_rgb.outputs['Color'], color_ramp.inputs['Fac'])
-    links.new(color_ramp.outputs['Color'], output.inputs['Surface'])
-    
-    return mat
-
-
-def create_pbr_material(
-    name: str,
-    base_color: Tuple[float, float, float, float] = (0.8, 0.8, 0.8, 1.0),
+    base_color: ColorType = (0.8, 0.8, 0.8),
     metallic: float = 0.0,
     roughness: float = 0.5,
     specular: float = 0.5,
     transmission: float = 0.0,
     ior: float = 1.45,
-    emission_color: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
-    emission_strength: float = 0.0
+    emission_color: ColorType = (0.0, 0.0, 0.0),
+    emission_strength: float = 0.0,
+    alpha: float = 1.0,
+    blend_method: str = 'OPAQUE'
 ) -> bpy.types.Material:
-    """Create comprehensive PBR material"""
-    mat = create_material(name)
-    nodes = mat.node_tree.nodes
+    """
+    Universal material creation with all PBR parameters.
     
-    bsdf = nodes["Principled BSDF"]
+    Args:
+        name: Material name
+        base_color: Base color RGB(A)
+        metallic: Metallic value (0-1)
+        roughness: Roughness value (0-1)
+        specular: Specular IOR level
+        transmission: Transmission weight for glass
+        ior: Index of refraction
+        emission_color: Emission color RGB(A)
+        emission_strength: Emission strength
+        alpha: Alpha transparency
+        blend_method: Blend mode ('OPAQUE', 'BLEND', 'CLIP', 'HASHED')
+    """
+    mat = bpy.data.materials.new(name=name)
+    mat.use_nodes = True
+    mat.blend_method = blend_method
     
-    # Set all PBR properties
-    bsdf.inputs['Base Color'].default_value = base_color
+    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    
+    # Set all parameters
+    bsdf.inputs['Base Color'].default_value = _ensure_rgba(base_color)
     bsdf.inputs['Metallic'].default_value = metallic
     bsdf.inputs['Roughness'].default_value = roughness
     bsdf.inputs['Specular IOR Level'].default_value = specular
     bsdf.inputs['Transmission Weight'].default_value = transmission
     bsdf.inputs['IOR'].default_value = ior
-    bsdf.inputs['Emission Color'].default_value = emission_color
+    bsdf.inputs['Emission Color'].default_value = _ensure_rgba(emission_color)
     bsdf.inputs['Emission Strength'].default_value = emission_strength
+    bsdf.inputs['Alpha'].default_value = alpha
     
     return mat
 
 
-def assign_material(
-    material: bpy.types.Material,
-    objects: Optional[Union[bpy.types.Object, List[bpy.types.Object]]] = None
-):
-    """Assign material to objects"""
-    if objects is None:
-        objects = bpy.context.selected_objects
+# Material presets dictionary for quick access
+MATERIAL_PRESETS: Dict[str, Dict] = {
+    # Metals
+    'gold': {'base_color': (1.0, 0.766, 0.336), 'metallic': 1.0, 'roughness': 0.1},
+    'silver': {'base_color': (0.972, 0.960, 0.915), 'metallic': 1.0, 'roughness': 0.1},
+    'copper': {'base_color': (0.955, 0.637, 0.538), 'metallic': 1.0, 'roughness': 0.2},
+    'chrome': {'base_color': (0.550, 0.556, 0.554), 'metallic': 1.0, 'roughness': 0.05},
+    'iron': {'base_color': (0.560, 0.570, 0.580), 'metallic': 1.0, 'roughness': 0.4},
     
-    # Handle single object or list
-    if hasattr(objects, 'type'):  # Single object
-        objects = [objects]
+    # Non-metals
+    'rubber': {'base_color': (0.1, 0.1, 0.1), 'roughness': 0.8},
+    'plastic': {'base_color': (0.5, 0.5, 0.5), 'roughness': 0.4, 'specular': 0.5},
+    'wood': {'base_color': (0.4, 0.25, 0.1), 'roughness': 0.7},
+    'concrete': {'base_color': (0.5, 0.5, 0.5), 'roughness': 0.9},
     
-    for obj in objects:
-        if obj.type == 'MESH':
-            if not obj.data.materials:
-                obj.data.materials.append(material)
-            else:
-                obj.data.materials[0] = material
+    # Glass/Transparent
+    'glass': {'transmission': 1.0, 'ior': 1.45, 'roughness': 0.0},
+    'water': {'transmission': 1.0, 'ior': 1.33, 'roughness': 0.0, 'base_color': (0.8, 0.95, 1.0)},
+    'diamond': {'transmission': 1.0, 'ior': 2.42, 'roughness': 0.0},
+    
+    # Emissive
+    'neon_red': {'emission_color': (1.0, 0.0, 0.0), 'emission_strength': 5.0},
+    'neon_blue': {'emission_color': (0.0, 0.5, 1.0), 'emission_strength': 5.0},
+    'neon_green': {'emission_color': (0.0, 1.0, 0.3), 'emission_strength': 5.0},
+}
 
 
-def set_material_color(
-    material: bpy.types.Material,
-    color: Tuple[float, float, float, float]
-):
-    """Set the base color of a material"""
-    if material.use_nodes:
-        nodes = material.node_tree.nodes
-        if "Principled BSDF" in nodes:
-            nodes["Principled BSDF"].inputs['Base Color'].default_value = color
+def create_preset_material(name: str, preset: str) -> bpy.types.Material:
+    """Create material from preset"""
+    if preset not in MATERIAL_PRESETS:
+        raise ValueError(f"Unknown preset: {preset}. Available: {list(MATERIAL_PRESETS.keys())}")
+    
+    return create_material(name, **MATERIAL_PRESETS[preset])
+
+
+def assign_material(obj: bpy.types.Object, material: bpy.types.Material):
+    """Assign material to object"""
+    if obj.data.materials:
+        obj.data.materials[0] = material
+    else:
+        obj.data.materials.append(material)
+
+
+def get_or_create_material(name: str, **kwargs) -> bpy.types.Material:
+    """Get existing material or create new one"""
+    if name in bpy.data.materials:
+        return bpy.data.materials[name]
+    return create_material(name, **kwargs)

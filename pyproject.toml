@@ -9,9 +9,10 @@ authors = [
 requires-python = ">=3.11"
 dependencies = [
     "anywidget>=0.9.18",
-    "bpy>=4.4.0",
     "traitlets>=5.14.3",
     "polars>=1.19.0",
+    "numpy>=1.26.0",
+    "bpy>=4.5.4",
     "loguru>=0.7.3",
 ]
 
@@ -21,9 +22,11 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "marimo>=0.14.10",
-    "nbformat>=5.10.4",
-    "pytest>=8.4.1",
+    "marimo",
+    "nbformat",
+    "pytest",
+    "mypy",
+    "ruff",
 ]
 
 [tool.uv]

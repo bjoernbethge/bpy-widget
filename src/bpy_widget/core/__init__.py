@@ -8,7 +8,6 @@ from .camera import (
     update_camera_position,
     update_camera_spherical,
 )
-
 from .data_import import (
     batch_import_data,
     import_data_as_points,
@@ -17,7 +16,6 @@ from .data_import import (
     import_multiple_series,
     read_data_file,
 )
-
 from .geometry import (
     add_subdivision_modifier,
     apply_modifiers,
@@ -27,34 +25,59 @@ from .geometry import (
     create_geometry_nodes_modifier,
     create_icosphere,
     create_point_cloud,
+    create_suzanne,
+    create_test_cube,
     create_torus,
     instance_on_points,
     join_objects,
     merge_vertices,
     set_smooth_shading,
 )
-
+from .io_handlers import (
+    export_alembic,
+    export_gltf,
+    export_scene_as_parquet,
+    export_usd,
+    import_alembic,
+    import_gltf,
+    import_scene_from_parquet,
+    import_usd,
+)
 from .materials import (
     assign_material,
-    create_emission_material,
-    create_glass_material,
-    create_gradient_material,
     create_material,
-    create_metal_material,
-    create_pbr_material,
-    create_simple_material,
-    create_toon_material,
-    create_transparent_material,
-    set_material_color,
+    create_preset_material,
+    MATERIAL_PRESETS,
+    get_or_create_material,
 )
-
 from .nodes import add_glare_node, setup_compositor
-
+from .post_processing import (
+    add_bloom_glare,
+    add_chromatic_aberration,
+    add_color_correction,
+    add_depth_of_field,
+    add_film_grain,
+    add_motion_blur,
+    add_sharpen,
+    add_vignette,
+    reset_compositor,
+    setup_extended_compositor,
+)
 from .rendering import (
     render_to_pixels,
     setup_rendering,
 )
-
+from .scene import (
+    clear_scene,
+    get_scene,
+)
+from .lighting import (
+    setup_lighting,
+    setup_world_background,
+    setup_three_point_lighting,
+    setup_environment_lighting,
+    setup_sun_light,
+)
 from .temp_files import cleanup_all, cleanup_file, create_temp_file, get_render_file
 
 __all__ = [
@@ -75,6 +98,8 @@ __all__ = [
     'create_curve_object',
     'create_icosphere',
     'create_torus',
+    'create_test_cube',
+    'create_suzanne',
     'create_collection',
     'instance_on_points',
     'join_objects',
@@ -84,24 +109,47 @@ __all__ = [
     'add_subdivision_modifier',
     'create_geometry_nodes_modifier',
     'apply_modifiers',
+    # IO Handlers
+    'import_gltf',
+    'export_gltf',
+    'import_usd',
+    'export_usd',
+    'import_alembic',
+    'export_alembic',
+    'export_scene_as_parquet',
+    'import_scene_from_parquet',
     # Materials
     'create_material',
-    'create_simple_material',
-    'create_emission_material',
-    'create_glass_material',
-    'create_metal_material',
-    'create_transparent_material',
-    'create_gradient_material',
-    'create_toon_material',
-    'create_pbr_material',
+    'create_preset_material',
+    'MATERIAL_PRESETS',
+    'get_or_create_material',
     'assign_material',
-    'set_material_color',
     # Nodes
     'setup_compositor',
     'add_glare_node',
+    # Post Processing
+    'setup_extended_compositor',
+    'add_bloom_glare',
+    'add_color_correction',
+    'add_vignette',
+    'add_film_grain',
+    'add_chromatic_aberration',
+    'add_motion_blur',
+    'add_depth_of_field',
+    'add_sharpen',
+    'reset_compositor',
     # Rendering
     'setup_rendering',
     'render_to_pixels',
+    # Scene
+    'clear_scene',
+    'get_scene',
+    # Lighting
+    'setup_lighting',
+    'setup_world_background',
+    'setup_three_point_lighting',
+    'setup_environment_lighting',
+    'setup_sun_light',
     # Temp Files
     'get_render_file',
     'create_temp_file',

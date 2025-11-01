@@ -1,8 +1,8 @@
 """
 Rendering functions for bpy widget - Fast & simple
 """
-import os
 import tempfile
+from pathlib import Path
 from typing import Optional, Tuple
 
 import bpy
@@ -35,6 +35,14 @@ def setup_rendering(width: int = 512, height: int = 512, engine: str = 'BLENDER_
     # Simple color management
     scene.view_settings.view_transform = 'Standard'
     scene.view_settings.look = 'None'
+    
+    # Disable viewport overlays for clean renders
+    for area in bpy.context.screen.areas:
+        if area.type == 'VIEW_3D':
+            for space in area.spaces:
+                if space.type == 'VIEW_3D':
+                    # Disable overlays by default for clean renders
+                    space.overlay.show_overlays = False
 
 
 def render_to_pixels() -> Tuple[Optional[np.ndarray], int, int]:
@@ -42,46 +50,45 @@ def render_to_pixels() -> Tuple[Optional[np.ndarray], int, int]:
     if not bpy.context.scene.camera:
         print("Warning: No camera found")
         return None, 0, 0
-    
-    # Direct render to temp file
-    temp_file = os.path.join(tempfile.gettempdir(), f"bpy_render_{os.getpid()}.png")
-    
+
+    # Create secure temporary file
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+        temp_file = tmp.name
+
     try:
         bpy.context.scene.render.filepath = temp_file
         bpy.ops.render.render(write_still=True)
-        
-        if not os.path.exists(temp_file):
+
+        temp_path = Path(temp_file)
+        if not temp_path.exists():
             return None, 0, 0
-        
+
         # Load image data
         temp_image = bpy.data.images.load(temp_file)
         width, height = temp_image.size
-        
+
         if width <= 0 or height <= 0 or not temp_image.pixels:
             bpy.data.images.remove(temp_image)
             return None, 0, 0
-        
+
         # Get pixel data efficiently
         pixel_count = height * width * 4
         pixel_data = np.empty(pixel_count, dtype=np.float32)
         temp_image.pixels.foreach_get(pixel_data)
-        
+
         # Convert to uint8 array
         pixels_array = pixel_data.reshape((height, width, 4))
         pixels_array = (np.clip(pixels_array, 0, 1) * 255).astype(np.uint8)
         pixels_array = np.flipud(pixels_array)
-        
+
         # Cleanup
         bpy.data.images.remove(temp_image)
-        
-        # Try to remove file (ignore errors)
-        try:
-            os.remove(temp_file)
-        except:
-            pass
-        
+
         return pixels_array, width, height
-        
+
     except Exception as e:
         print(f"Render failed: {e}")
         return None, 0, 0
+    finally:
+        # Always clean up temporary file
+        Path(temp_file).unlink(missing_ok=True)
