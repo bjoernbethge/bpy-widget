@@ -25,7 +25,7 @@ def setup_camera(distance: float = 10.0, target: Tuple[float, float, float] = (0
     
     # Create camera
     bpy.ops.object.camera_add(location=(x, y, z))
-    camera = bpy.context.object
+    camera = getattr(bpy.context, 'object', None) or bpy.data.objects[-1]  # Get last created object
     camera.name = "InteractiveCamera"
     
     # Look at target

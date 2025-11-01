@@ -87,9 +87,21 @@ __all__ = ['BpyWidget', 'BlenderWidget']
 
 class BpyWidget(anywidget.AnyWidget):
     """Blender widget with interactive camera control"""
-    
-    _esm = (STATIC_DIR / 'widget.js').read_text()
-    _css = (STATIC_DIR / 'widget.css').read_text()
+
+    # Development mode support (ANYWIDGET_HMR=1) - dynamic loading
+    @property
+    def _esm(self):
+        if os.getenv("ANYWIDGET_HMR") == "1":
+            return "http://localhost:5173/src/widget.js?anywidget"
+        else:
+            return (STATIC_DIR / 'widget.js').read_text()
+
+    @property
+    def _css(self):
+        if os.getenv("ANYWIDGET_HMR") == "1":
+            return ""
+        else:
+            return (STATIC_DIR / 'widget.css').read_text()
     
     # Widget display traits
     image_data = traitlets.Unicode('').tag(sync=True)
@@ -228,9 +240,15 @@ class BpyWidget(anywidget.AnyWidget):
             try:
                 import bpy
                 logger.debug("bpy imported successfully")
+                # Test if bpy is functional
+                _ = bpy.app.version_string  # This should work
             except ImportError as e:
                 logger.error(f"Failed to import bpy: {e}")
                 raise
+            except Exception as e:
+                logger.error(f"bpy import succeeded but is not functional: {e}")
+                logger.info("This usually means bpy_types is missing. Try reinstalling bpy.")
+                raise ImportError(f"bpy is not functional: {e}") from e
 
     @traitlets.observe('camera_distance', 'camera_angle_x', 'camera_angle_z')
     def _on_camera_change(self, change):
@@ -848,13 +866,13 @@ class BpyWidget(anywidget.AnyWidget):
     def active_object(self):
         """Access to bpy.context.active_object."""
         self._ensure_bpy_loaded()
-        return bpy.context.active_object
+        return getattr(bpy.context, 'active_object', None)
 
     @property
     def selected_objects(self):
         """Access to bpy.context.selected_objects."""
         self._ensure_bpy_loaded()
-        return bpy.context.selected_objects
+        return getattr(bpy.context, 'selected_objects', [])
 
     @property
     def data(self):
@@ -895,14 +913,6 @@ class BpyWidget(anywidget.AnyWidget):
         print(f"Scene objects: {[obj.name for obj in bpy.data.objects]}")
         print(f"Render engine: {scene.render.engine}")
         print(f"Resolution: {scene.render.resolution_x}x{scene.render.resolution_y}")
-
-        # Check overlay status
-        for area in bpy.context.screen.areas:
-            if area.type == 'VIEW_3D':
-                for space in area.spaces:
-                    if space.type == 'VIEW_3D':
-                        print(f"Viewport overlays enabled: {space.overlay.show_overlays}")
-
         print("==================\n")
 
 

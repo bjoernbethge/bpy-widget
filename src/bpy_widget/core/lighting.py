@@ -2,6 +2,7 @@
 Lighting - Analog zu utils.py setup_lighting
 """
 from typing import Tuple
+
 import bpy
 
 
@@ -68,15 +69,17 @@ def setup_lighting(
     """
     # Add key light
     bpy.ops.object.light_add(type='SUN', location=sun_location)
-    sun = bpy.context.object
-    sun.data.energy = sun_energy
-    sun.rotation_euler = (0.3, 0.3, 0)
+    sun = getattr(bpy.context, 'object', None) or bpy.data.objects[-1]  # Get last created object
+    if sun:
+        sun.data.energy = sun_energy
+        sun.rotation_euler = (0.3, 0.3, 0)
 
     if add_fill_light:
         # Add fill light
         bpy.ops.object.light_add(type='AREA', location=(-4, -4, 6))
-        fill = bpy.context.object
-        fill.data.energy = sun_energy * 0.3
+        fill = getattr(bpy.context, 'object', None) or bpy.data.objects[-1]  # Get last created object
+        if fill:
+            fill.data.energy = sun_energy * 0.3
         fill.data.size = 5
         fill.rotation_euler = (-0.3, -0.3, 0)
 
@@ -106,7 +109,7 @@ def setup_world_background(
 def setup_sun_light(energy=2.0, angle=0.785):
     """Setup sun light - analog zu setup_lighting"""
     bpy.ops.object.light_add(type='SUN', location=(3, -3, 5))
-    sun = bpy.context.object
+    sun = getattr(bpy.context, 'object', None) or bpy.data.objects[-1]  # Get last created object
     sun.data.energy = energy
     sun.rotation_euler = (angle, 0, angle)
     return sun

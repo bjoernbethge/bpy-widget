@@ -12,8 +12,8 @@ dependencies = [
     "traitlets>=5.14.3",
     "polars>=1.19.0",
     "numpy>=1.26.0",
-    "bpy>=4.5.4",
     "loguru>=0.7.3",
+    "bpy==4.5.4",
 ]
 
 [build-system]

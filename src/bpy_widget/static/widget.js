@@ -1,4 +1,4 @@
-class g {
+class u {
   constructor(t, e) {
     this.canvas = t, this.model = e, this.isDragging = !1, this.lastX = 0, this.lastY = 0, this.lastUpdateTime = 0, this.UPDATE_INTERVAL = 33, this.sensitivity = 0.01, this.bindEvents();
   }
@@ -83,16 +83,21 @@ class v {
     this.canvas.style.cursor = "grab";
   }
   updateDisplay(t, e, s) {
-    t && e > 0 && s > 0 ? (this.renderImage(t, e, s), this.updateFps()) : this.renderPlaceholder(e || 512, s || 512);
+    console.log("CanvasRenderer.updateDisplay called with:", t ? t.substring(0, 50) + "..." : "null", e, s), t && e > 0 && s > 0 ? (this.renderImage(t, e, s), this.updateFps()) : (console.log("CanvasRenderer: No image data, showing placeholder"), this.renderPlaceholder(e || 512, s || 512));
   }
   renderImage(t, e, s) {
     (this.canvas.width !== e || this.canvas.height !== s) && (this.canvas.width = e, this.canvas.height = s);
     try {
-      const n = atob(t), i = new Uint8Array(n.length);
-      for (let c = 0; c < i.length; c++)
-        i[c] = n.charCodeAt(c);
-      const r = new ImageData(new Uint8ClampedArray(i), e, s);
-      this.ctx.putImageData(r, 0, 0);
+      let n = t;
+      t.startsWith("data:image") && (n = t.split(",")[1]), console.log("renderImage: Decoding base64 data, length:", n.length, "expected pixels:", e * s * 4);
+      const i = atob(n);
+      console.log("renderImage: Binary string length:", i.length);
+      const r = new Uint8Array(i.length);
+      for (let c = 0; c < r.length; c++)
+        r[c] = i.charCodeAt(c);
+      console.log("renderImage: Created Uint8Array with length:", r.length);
+      const o = new ImageData(new Uint8ClampedArray(r), e, s);
+      this.ctx.putImageData(o, 0, 0), console.log("renderImage: Image rendered successfully!");
     } catch (n) {
       console.error("Failed to render image:", n), this.renderError(e, s, "Render Error");
     }
@@ -118,7 +123,7 @@ class v {
     this.ctx = null;
   }
 }
-const f = {
+const p = {
   render({ model: a, el: t }) {
     t.innerHTML = `
             <div class="bpy-widget">
@@ -129,22 +134,22 @@ const f = {
                 </div>
             </div>
         `;
-    const e = t.querySelector(".viewer-canvas"), s = t.querySelector(".render-time"), n = t.querySelector(".fps"), i = new v(e), r = new g(e, a);
-    function c() {
-      const l = a.get("image_data"), h = a.get("width"), u = a.get("height");
-      i.updateDisplay(l, h, u);
+    const e = t.querySelector(".viewer-canvas"), s = t.querySelector(".render-time"), n = t.querySelector(".fps"), i = new v(e), r = new u(e, a);
+    function o() {
+      const l = a.get("image_data"), h = a.get("width"), g = a.get("height");
+      i.updateDisplay(l, h, g);
       const d = i.getFps();
       d > 0 && (n.textContent = `${d} FPS`);
     }
-    function o() {
+    function c() {
       const h = a.get("status").match(/Rendered.*\((\d+)ms\)/);
       h && (s.textContent = `Render: ${h[1]}ms`);
     }
-    return a.on("change:image_data", c), a.on("change:width", c), a.on("change:height", c), a.on("change:status", o), c(), o(), () => {
+    return a.on("change:image_data", o), a.on("change:width", o), a.on("change:height", o), a.on("change:status", c), o(), c(), () => {
       r.destroy(), i.destroy();
     };
   }
 };
 export {
-  f as default
+  p as default
 };

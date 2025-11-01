@@ -35,14 +35,6 @@ def setup_rendering(width: int = 512, height: int = 512, engine: str = 'BLENDER_
     # Simple color management
     scene.view_settings.view_transform = 'Standard'
     scene.view_settings.look = 'None'
-    
-    # Disable viewport overlays for clean renders
-    for area in bpy.context.screen.areas:
-        if area.type == 'VIEW_3D':
-            for space in area.spaces:
-                if space.type == 'VIEW_3D':
-                    # Disable overlays by default for clean renders
-                    space.overlay.show_overlays = False
 
 
 def render_to_pixels() -> Tuple[Optional[np.ndarray], int, int]:

@@ -1,8 +1,10 @@
 """
 Geometry functions for bpy widget
 """
+from typing import List, Optional, Tuple, Union
+
 import bpy
-from typing import List, Tuple, Optional, Union
+
 from .materials import create_material
 
 
@@ -54,7 +56,7 @@ def create_icosphere(
         radius=radius,
         location=location
     )
-    return bpy.context.object
+    return getattr(bpy.context, 'object', None) or bpy.data.objects[-1]  # Get last created object
 
 
 def create_torus(
@@ -68,7 +70,7 @@ def create_torus(
         minor_radius=minor_radius,
         location=location
     )
-    return bpy.context.object
+    return getattr(bpy.context, 'object', None) or bpy.data.objects[-1]  # Get last created object
 
 
 def create_collection(name: str) -> bpy.types.Collection:
@@ -140,8 +142,8 @@ def join_objects(objects: List[bpy.types.Object]) -> bpy.types.Object:
     
     # Join
     bpy.ops.object.join()
-    
-    return bpy.context.object
+
+    return getattr(bpy.context, 'object', None) or bpy.data.objects[-1]  # Get last created object
 
 
 def convert_to_mesh(obj: bpy.types.Object) -> bpy.types.Object:
@@ -236,7 +238,7 @@ def create_test_cube(
         Created cube object
     """
     bpy.ops.mesh.primitive_cube_add(location=location, size=size)
-    cube = bpy.context.object
+    cube = getattr(bpy.context, 'object', None) or bpy.data.objects[-1]  # Get last created object
     cube.name = "TestCube"
 
     # Apply material
@@ -264,7 +266,7 @@ def create_suzanne(
         Created Suzanne object
     """
     bpy.ops.mesh.primitive_monkey_add(location=location, size=size)
-    suzanne = bpy.context.object
+    suzanne = getattr(bpy.context, 'object', None) or bpy.data.objects[-1]  # Get last created object
     suzanne.name = "Suzanne"
 
     # Apply material

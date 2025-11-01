@@ -91,7 +91,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anywidget", specifier = ">=0.9.18" },
-    { name = "bpy", specifier = ">=4.5.4" },
+    { name = "bpy", specifier = "==4.5.4" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "polars", specifier = ">=1.19.0" },

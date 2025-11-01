@@ -19,10 +19,12 @@ export class CanvasRenderer {
     }
     
     updateDisplay(imageData, width, height) {
+        console.log('CanvasRenderer.updateDisplay called with:', imageData ? imageData.substring(0, 50) + '...' : 'null', width, height);
         if (imageData && width > 0 && height > 0) {
             this.renderImage(imageData, width, height);
             this.updateFps();
         } else {
+            console.log('CanvasRenderer: No image data, showing placeholder');
             this.renderPlaceholder(width || 512, height || 512);
         }
     }
@@ -33,19 +35,33 @@ export class CanvasRenderer {
             this.canvas.width = width;
             this.canvas.height = height;
         }
-        
+
         try {
+            // Handle both raw base64 and data URIs
+            let base64Data = imageData;
+            if (imageData.startsWith('data:image')) {
+                base64Data = imageData.split(',')[1];
+            }
+
+            console.log('renderImage: Decoding base64 data, length:', base64Data.length, 'expected pixels:', width * height * 4);
+
             // Decode base64 to binary
-            const binaryString = atob(imageData);
+            const binaryString = atob(base64Data);
+            console.log('renderImage: Binary string length:', binaryString.length);
+
             const bytes = new Uint8Array(binaryString.length);
             for (let i = 0; i < bytes.length; i++) {
                 bytes[i] = binaryString.charCodeAt(i);
             }
-            
+
+            console.log('renderImage: Created Uint8Array with length:', bytes.length);
+
             // Create ImageData and render
             const imgData = new ImageData(new Uint8ClampedArray(bytes), width, height);
             this.ctx.putImageData(imgData, 0, 0);
-            
+
+            console.log('renderImage: Image rendered successfully!');
+
         } catch (error) {
             console.error('Failed to render image:', error);
             this.renderError(width, height, 'Render Error');
