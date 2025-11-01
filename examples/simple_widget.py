@@ -1,4 +1,11 @@
 #!/usr/bin/env python
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "marimo",
+#     "pyzmq",
+# ]
+# ///
 """
 Simple BPY Widget Demo
 
@@ -43,6 +50,7 @@ def main():
 
     # Display widget - automatic initialization happens via auto_init=True and __repr__
     widget
+    return
 
 
 if __name__ == "__main__":

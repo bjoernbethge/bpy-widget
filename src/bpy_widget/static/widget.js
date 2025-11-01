@@ -1,4 +1,4 @@
-class u {
+class g {
   constructor(t, e) {
     this.canvas = t, this.model = e, this.isDragging = !1, this.lastX = 0, this.lastY = 0, this.lastUpdateTime = 0, this.UPDATE_INTERVAL = 33, this.sensitivity = 0.01, this.bindEvents();
   }
@@ -28,10 +28,10 @@ class u {
     this.updateCamera(s, n), t.preventDefault();
   }
   handleMouseUp(t) {
-    this.isDragging && (this.isDragging = !1, this.canvas.style.cursor = "grab", this.forceSave());
+    this.isDragging && (this.isDragging = !1, this.canvas.style.cursor = "grab", this.forceSave(), setTimeout(() => this.forceSave(), 50));
   }
   handleMouseLeave(t) {
-    this.isDragging && (this.isDragging = !1, this.canvas.style.cursor = "grab", this.forceSave());
+    this.isDragging && (this.isDragging = !1, this.canvas.style.cursor = "grab", this.forceSave(), setTimeout(() => this.forceSave(), 50));
   }
   handleTouchStart(t) {
     if (t.touches.length === 1) {
@@ -46,7 +46,7 @@ class u {
     this.updateCamera(n, i), t.preventDefault();
   }
   handleTouchEnd(t) {
-    this.isDragging && (this.isDragging = !1, this.forceSave());
+    this.isDragging && (this.isDragging = !1, this.forceSave(), setTimeout(() => this.forceSave(), 50));
   }
   handleWheel(t) {
     t.preventDefault();
@@ -93,8 +93,8 @@ class v {
       const i = atob(n);
       console.log("renderImage: Binary string length:", i.length);
       const r = new Uint8Array(i.length);
-      for (let c = 0; c < r.length; c++)
-        r[c] = i.charCodeAt(c);
+      for (let h = 0; h < r.length; h++)
+        r[h] = i.charCodeAt(h);
       console.log("renderImage: Created Uint8Array with length:", r.length);
       const o = new ImageData(new Uint8ClampedArray(r), e, s);
       this.ctx.putImageData(o, 0, 0), console.log("renderImage: Image rendered successfully!");
@@ -123,33 +123,48 @@ class v {
     this.ctx = null;
   }
 }
-const p = {
+class p {
+  constructor(t) {
+    this.parentEl = t, this.container = null, this.renderTimeEl = null, this.fpsEl = null, this.create();
+  }
+  create() {
+    this.container = document.createElement("div"), this.container.className = "camera-info", this.renderTimeEl = document.createElement("span"), this.renderTimeEl.className = "render-time", this.renderTimeEl.textContent = "Render: --ms";
+    const t = document.createTextNode(" | ");
+    this.fpsEl = document.createElement("span"), this.fpsEl.className = "fps", this.fpsEl.textContent = "-- FPS", this.container.appendChild(this.renderTimeEl), this.container.appendChild(t), this.container.appendChild(this.fpsEl), this.parentEl.appendChild(this.container);
+  }
+  updateRenderTime(t) {
+    const e = t.match(/Rendered.*\((\d+)ms\)/);
+    e && (this.renderTimeEl.textContent = `Render: ${e[1]}ms`);
+  }
+  updateFps(t) {
+    t > 0 && (this.fpsEl.textContent = `${t} FPS`);
+  }
+  update(t, e) {
+    this.updateRenderTime(t), this.updateFps(e);
+  }
+  destroy() {
+    this.container && this.container.parentNode && this.container.parentNode.removeChild(this.container), this.container = null, this.renderTimeEl = null, this.fpsEl = null;
+  }
+}
+const m = {
   render({ model: a, el: t }) {
     t.innerHTML = `
             <div class="bpy-widget">
                 <canvas class="viewer-canvas"></canvas>
-                <div class="camera-info">
-                    <span class="render-time">Render: --ms</span> | 
-                    <span class="fps">-- FPS</span>
-                </div>
             </div>
         `;
-    const e = t.querySelector(".viewer-canvas"), s = t.querySelector(".render-time"), n = t.querySelector(".fps"), i = new v(e), r = new u(e, a);
+    const e = t.querySelector(".bpy-widget"), s = t.querySelector(".viewer-canvas"), n = new v(s), i = new g(s, a), r = new p(e);
     function o() {
-      const l = a.get("image_data"), h = a.get("width"), g = a.get("height");
-      i.updateDisplay(l, h, g);
-      const d = i.getFps();
-      d > 0 && (n.textContent = `${d} FPS`);
+      const h = a.get("image_data"), c = a.get("width"), l = a.get("height");
+      n.updateDisplay(h, c, l);
+      const d = n.getFps(), u = a.get("status");
+      r.update(u, d);
     }
-    function c() {
-      const h = a.get("status").match(/Rendered.*\((\d+)ms\)/);
-      h && (s.textContent = `Render: ${h[1]}ms`);
-    }
-    return a.on("change:image_data", o), a.on("change:width", o), a.on("change:height", o), a.on("change:status", c), o(), c(), () => {
-      r.destroy(), i.destroy();
+    return a.on("change:image_data", o), a.on("change:width", o), a.on("change:height", o), a.on("change:status", o), o(), () => {
+      i.destroy(), n.destroy(), r.destroy();
     };
   }
 };
 export {
-  p as default
+  m as default
 };

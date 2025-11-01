@@ -71,7 +71,11 @@ export class CameraControls {
         if (this.isDragging) {
             this.isDragging = false;
             this.canvas.style.cursor = 'grab';
+            // Force immediate save and ensure final render
             this.forceSave();
+            // Trigger a final update to ensure last state is rendered
+            // The backend _update() will handle debouncing
+            setTimeout(() => this.forceSave(), 50); // Small delay to ensure backend processed
         }
     }
     
@@ -79,7 +83,10 @@ export class CameraControls {
         if (this.isDragging) {
             this.isDragging = false;
             this.canvas.style.cursor = 'grab';
+            // Force immediate save and ensure final render
             this.forceSave();
+            // Trigger a final update to ensure last state is rendered
+            setTimeout(() => this.forceSave(), 50); // Small delay to ensure backend processed
         }
     }
     
@@ -109,7 +116,10 @@ export class CameraControls {
     handleTouchEnd(e) {
         if (this.isDragging) {
             this.isDragging = false;
+            // Force immediate save and ensure final render
             this.forceSave();
+            // Trigger a final update to ensure last state is rendered
+            setTimeout(() => this.forceSave(), 50); // Small delay to ensure backend processed
         }
     }
     

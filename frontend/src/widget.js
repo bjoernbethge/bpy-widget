@@ -6,6 +6,7 @@ import './widget.css';
 
 import { CameraControls } from './controls/camera-controls.js';
 import { CanvasRenderer } from './rendering/canvas-renderer.js';
+import { StatsOverlay } from './ui/stats-overlay.js';
 
 export default {
     render({ model, el }) {
@@ -13,21 +14,17 @@ export default {
         el.innerHTML = `
             <div class="bpy-widget">
                 <canvas class="viewer-canvas"></canvas>
-                <div class="camera-info">
-                    <span class="render-time">Render: --ms</span> | 
-                    <span class="fps">-- FPS</span>
-                </div>
             </div>
         `;
         
-        // Get elements
+        // Get widget container and canvas
+        const widgetContainer = el.querySelector('.bpy-widget');
         const canvas = el.querySelector('.viewer-canvas');
-        const renderTimeEl = el.querySelector('.render-time');
-        const fpsEl = el.querySelector('.fps');
         
         // Create components
         const renderer = new CanvasRenderer(canvas);
         const controls = new CameraControls(canvas, model);
+        const statsOverlay = new StatsOverlay(widgetContainer);
         
         // Update display function
         function updateDisplay() {
@@ -37,36 +34,26 @@ export default {
             
             renderer.updateDisplay(imageData, width, height);
             
-            // Update FPS display
+            // Update stats overlay
             const fps = renderer.getFps();
-            if (fps > 0) {
-                fpsEl.textContent = `${fps} FPS`;
-            }
-        }
-        
-        // Update render time display
-        function updateRenderTime() {
             const status = model.get('status');
-            const match = status.match(/Rendered.*\((\d+)ms\)/);
-            if (match) {
-                renderTimeEl.textContent = `Render: ${match[1]}ms`;
-            }
+            statsOverlay.update(status, fps);
         }
         
         // Bind model events
         model.on('change:image_data', updateDisplay);
         model.on('change:width', updateDisplay);
         model.on('change:height', updateDisplay);
-        model.on('change:status', updateRenderTime);
+        model.on('change:status', updateDisplay);
         
         // Initial display
         updateDisplay();
-        updateRenderTime();
         
         // Cleanup function (called when widget is destroyed)
         return () => {
             controls.destroy();
             renderer.destroy();
+            statsOverlay.destroy();
         };
     }
 };

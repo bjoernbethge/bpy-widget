@@ -164,10 +164,12 @@ class BpyWidget(anywidget.AnyWidget):
         self._pixel_array: typing.Optional[np.ndarray] = None
         self._just_initialized = False
 
-        # Debouncing infrastructure for render operations (timestamp-based, no threading)
+        # Update infrastructure following Three.js pattern:
+        # - Mark updates as needed (like camera controls)
+        # - Only render when update() returns True and enough time has passed
         self._last_render_time = 0.0
-        self._render_debounce_ms = 100  # Debounce delay in milliseconds
-        self._pending_render_request = False  # Flag to indicate pending render after debounce
+        self._update_needed = False  # Flag: camera/state changed, render needed
+        self._render_debounce_ms = 20  # Minimum time between renders (~50 FPS max, rendering is ~16ms)
 
         logger.info(f"BpyWidget created: {width}x{height}")
 
@@ -259,21 +261,12 @@ class BpyWidget(anywidget.AnyWidget):
 
     @traitlets.observe('camera_distance', 'camera_angle_x', 'camera_angle_z')
     def _on_camera_change(self, change):
-        """Handle camera parameter changes from frontend"""
+        """Handle camera parameter changes from frontend - mark update as needed"""
         if self.is_initialized and not self._just_initialized:
-            # Check if pending render should be executed first
-            if self._pending_render_request:
-                current_time = time.time()
-                time_since_last_render = (current_time - self._last_render_time) * 1000.0
-                if time_since_last_render >= self._render_debounce_ms:
-                    # Enough time has passed, execute pending render
-                    self._last_render_time = current_time
-                    self._pending_render_request = False
-                    self._update_camera_and_render()
-                    return
-            
-            # Use debounced render - ensures we don't render on every tiny movement
-            self._debounced_render()
+            # Mark that an update is needed (Three.js pattern)
+            self._update_needed = True
+            # Try to update immediately if enough time has passed
+            self._update()
     
     @traitlets.observe('render_engine', 'render_device')
     def _on_render_settings_change(self, change):
@@ -291,30 +284,40 @@ class BpyWidget(anywidget.AnyWidget):
                 scene.cycles.device = change['new']
                 print(f"Render device changed to: {change['new']}")
             
-            # Re-render with new settings
-            self._debounced_render()
+            # Mark update as needed and try to render
+            self._update_needed = True
+            self._update()
 
-    def _debounced_render(self, force_immediate: bool = False):
-        """Schedule a debounced render operation using timestamp-based debouncing (no threading)"""
+    def _update(self, force: bool = False) -> bool:
+        """Update and render if needed (Three.js pattern: returns True if rendered)
+        
+        Similar to camera-controls.update(delta) which returns True if camera changed.
+        Only renders if:
+        1. Update is needed (_update_needed = True)
+        2. Enough time has passed since last render (debounce) OR force=True
+        
+        Args:
+            force: If True, render immediately regardless of debounce time
+            
+        Returns:
+            bool: True if rendering occurred, False otherwise
+        """
+        if not self._update_needed:
+            return False
+        
         current_time = time.time()
-        time_since_last_render = (current_time - self._last_render_time) * 1000.0  # Convert to ms
+        time_since_last_render = (current_time - self._last_render_time) * 1000.0  # ms
         
-        # If force immediate, render right away
-        if force_immediate:
-            self._pending_render_request = False
+        # Check if enough time has passed since last render OR force render
+        if force or time_since_last_render >= self._render_debounce_ms:
+            # Update camera and render
             self._last_render_time = current_time
+            self._update_needed = False  # Clear flag after rendering
             self._update_camera_and_render()
-            return
+            return True
         
-        # Check if enough time has passed since last render
-        if time_since_last_render >= self._render_debounce_ms:
-            # Enough time has passed, render immediately
-            self._last_render_time = current_time
-            self._pending_render_request = False
-            self._update_camera_and_render()
-        else:
-            # Too soon, mark as pending - will be checked on next observer call
-            self._pending_render_request = True
+        # Not enough time has passed, but update is still needed
+        return False
 
     def _update_camera_and_render(self):
         """Update camera and render (called after debounce or immediately)"""
@@ -975,9 +978,9 @@ class BpyWidget(anywidget.AnyWidget):
         return super().__repr__()
 
     def __del__(self):
-        """Cleanup on widget destruction - reset pending render flag"""
-        if hasattr(self, '_pending_render_request'):
-            self._pending_render_request = False
+        """Cleanup on widget destruction - reset update flag"""
+        if hasattr(self, '_update_needed'):
+            self._update_needed = False
 
 
 # Legacy alias
