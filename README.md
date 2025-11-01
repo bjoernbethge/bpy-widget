@@ -1,6 +1,6 @@
 # bpy-widget
 
-Interactive Blender 3D viewport widget for Jupyter/Marimo notebooks with real-time EEVEE Next rendering.
+Interactive Blender 3D viewport widget for Jupyter notebooks with real-time EEVEE Next rendering.
 
 ## Features
 
@@ -8,7 +8,7 @@ Interactive Blender 3D viewport widget for Jupyter/Marimo notebooks with real-ti
 - ⚡ **EEVEE Next & Cycles** - Switch between render engines on the fly  
 - 🎬 **Post-Processing** - Bloom, vignette, color correction, and more
 - 📊 **Data Visualization** - Import CSV/Parquet data as 3D objects
-- 🔄 **Live Updates** - Changes render immediately
+- 🔄 **Live Updates** - Changes render immediately with optimized debouncing
 - 📦 **Import/Export** - Support for GLTF, USD, Alembic formats
 - 🧩 **Extension Management** - Manage Blender extensions and addons
 
@@ -26,12 +26,11 @@ uv add bpy-widget
 
 ```python
 from bpy_widget import BpyWidget
-import marimo as mo
 
 # Create widget
 widget = BpyWidget(width=800, height=600)
 
-# Display in notebook
+# Display in notebook (Jupyter/Marimo)
 widget
 ```
 
@@ -174,19 +173,36 @@ widget.scene.eevee.taa_render_samples = 8
 widget.scene.eevee.use_raytracing = False
 ```
 
-## Direct Blender API Access
+## Convenience Properties
+
+Access Blender internals directly without `bpy.context`:
 
 ```python
-# Access Blender's API directly
-widget.ops.mesh.primitive_uv_sphere_add(location=(0, 0, 5))
-widget.data.objects["Sphere"].scale = (2, 2, 2)
-widget.context.view_layer.update()
-
-# Access the scene
+# Scene access
 scene = widget.scene
 scene.frame_set(1)
 scene.render.fps = 30
+
+# Context access (for advanced operations)
+widget.context.view_layer.update()
+
+# Data access
+objects = widget.objects  # bpy.data.objects
+materials = widget.data.materials  # bpy.data.materials
+
+# Camera access
+camera = widget.camera  # bpy.context.scene.camera
+
+# Active object
+active = widget.active_object  # bpy.context.active_object
+selected = widget.selected_objects  # bpy.context.selected_objects
+
+# Operations access
+widget.ops.mesh.primitive_uv_sphere_add(location=(0, 0, 5))
+widget.data.objects["Sphere"].scale = (2, 2, 2)
 ```
+
+**Note:** These properties work in headless Blender environments and safely handle cases where UI contexts aren't available.
 
 ## Development
 
@@ -198,14 +214,31 @@ cd bpy-widget
 # Install with dev dependencies
 uv sync --dev
 
-# Run example notebook
-marimo edit examples/basic_usage.py
+# Run example notebooks (set PYTHONPATH for local development)
+# PowerShell:
+$env:PYTHONPATH = "D:\bpy-widget\src"; uv run marimo edit examples/basic_usage.py
+
+# Bash:
+export PYTHONPATH="$(pwd)/src" && uv run marimo edit examples/basic_usage.py
+
+# Frontend development with HMR
+cd frontend
+npm install
+npm run dev  # Starts Vite dev server on localhost:5173
+
+# In another terminal, run notebook with HMR enabled:
+$env:ANYWIDGET_HMR="1"; $env:PYTHONPATH="D:\bpy-widget\src"; uv run marimo edit examples/basic_usage.py
 ```
+
+See `examples/` directory for complete usage examples.
 
 ## Examples
 
-- `examples/basic_usage.py` - Interactive Marimo notebook with all features
-- `examples/data_import.py` - Data visualization examples
+See the `examples/` directory for complete working examples:
+
+- `simple_widget.py` - Minimal example to get started quickly
+- `basic_usage.py` - Interactive notebook with all features (materials, post-processing, scene controls)
+- `data_import.py` - Data visualization with CSV/Parquet import as point clouds and curves
 
 ## Troubleshooting
 
@@ -230,4 +263,3 @@ MIT License - see LICENSE file for details.
 Built with:
 - [Blender](https://www.blender.org/) - 3D creation suite
 - [anywidget](https://anywidget.dev/) - Custom Jupyter widgets
-- [Marimo](https://marimo.io/) - Reactive notebooks
