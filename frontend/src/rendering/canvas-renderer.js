@@ -30,11 +30,15 @@ export class CanvasRenderer {
     }
     
     renderImage(imageData, width, height) {
-        // Update canvas size if needed
+        // Update canvas internal size (actual pixel dimensions)
+        // This must match the render resolution to avoid stretching
         if (this.canvas.width !== width || this.canvas.height !== height) {
             this.canvas.width = width;
             this.canvas.height = height;
         }
+        
+        // CSS will handle the display scaling with object-fit: contain
+        // which preserves aspect ratio
 
         try {
             // Handle both raw base64 and data URIs
@@ -77,7 +81,7 @@ export class CanvasRenderer {
         this.ctx.fillStyle = '#999';
         this.ctx.font = '14px monospace';
         this.ctx.textAlign = 'center';
-        this.ctx.fillText('Drag to rotate • Scroll to zoom', width/2, height/2);
+        this.ctx.fillText('Left-drag: rotate • Right/Middle-drag: pan • Scroll: zoom', width/2, height/2);
     }
     
     renderError(width, height, message) {

@@ -7,16 +7,200 @@ from typing import Optional, Tuple
 
 import bpy
 import numpy as np
+from loguru import logger
+
+# GPU module - available after bpy import
+gpu = None
 
 
-def setup_rendering(width: int = 512, height: int = 512, engine: str = 'BLENDER_EEVEE_NEXT'):
-    """Configure render settings - simple and fast"""
+def set_gpu_backend(backend: str = 'VULKAN') -> bool:
+    """Set GPU backend (VULKAN or OPENGL)
+    
+    Blender 4.5+ supports Vulkan backend for improved performance.
+    Note: Requires restart or re-initialization to take full effect.
+    
+    Args:
+        backend: Either 'VULKAN' or 'OPENGL'
+        
+    Returns:
+        True if backend was set successfully, False otherwise
+    """
+    try:
+        if not hasattr(bpy.context.preferences, 'system'):
+            return False
+        
+        sys_prefs = bpy.context.preferences.system
+        
+        if not hasattr(sys_prefs, 'gpu_backend'):
+            return False
+        
+        # Set backend
+        backend_upper = backend.upper()
+        if backend_upper not in ('VULKAN', 'OPENGL'):
+            return False
+        
+        sys_prefs.gpu_backend = backend_upper
+        
+        # Verify it was set
+        return sys_prefs.gpu_backend == backend_upper
+        
+    except Exception:
+        return False
+
+
+def get_gpu_backend() -> Optional[str]:
+    """Get current GPU backend
+    
+    Returns:
+        Current backend ('VULKAN' or 'OPENGL') or None if unavailable
+    """
+    try:
+        if not hasattr(bpy.context.preferences, 'system'):
+            return None
+        
+        sys_prefs = bpy.context.preferences.system
+        
+        if not hasattr(sys_prefs, 'gpu_backend'):
+            return None
+        
+        return sys_prefs.gpu_backend
+        
+    except Exception:
+        return None
+
+
+def initialize_gpu():
+    """Initialize GPU module for OpenGL rendering
+    
+    This must be called after bpy is imported. The gpu module provides
+    OpenGL access needed for EEVEE rendering.
+    
+    Returns:
+        True if GPU module was initialized successfully, False otherwise
+    """
+    global gpu
+    try:
+        if gpu is None:
+            import gpu
+            logger.debug("GPU module initialized")
+        
+        # Verify GPU is available
+        if hasattr(gpu, 'capabilities'):
+            # Check OpenGL capabilities
+            caps = gpu.capabilities
+            if hasattr(caps, 'GL_MAX_TEXTURE_SIZE'):
+                logger.debug(f"OpenGL max texture size: {caps.GL_MAX_TEXTURE_SIZE}")
+        
+        return True
+    except ImportError:
+        logger.warning("GPU module not available - OpenGL rendering may be limited")
+        return False
+    except Exception as e:
+        logger.debug(f"GPU initialization issue: {e}")
+        return False
+
+
+def ensure_gpu_for_eevee():
+    """Ensure GPU is properly configured for EEVEE rendering
+    
+    This function:
+    - Initializes the GPU module if not already done
+    - Verifies OpenGL backend is available
+    - Configures EEVEE to use GPU acceleration
+    
+    Returns:
+        True if GPU is ready for EEVEE, False otherwise
+    """
+    try:
+        # Initialize GPU module
+        if not initialize_gpu():
+            return False
+        
+        # Check if OpenGL backend is set (for EEVEE)
+        backend = get_gpu_backend()
+        if backend is None:
+            # Try to set OpenGL as fallback if no backend is set
+            # EEVEE works best with OpenGL
+            set_gpu_backend('OPENGL')
+            backend = get_gpu_backend()
+        
+        # Verify EEVEE can use GPU
+        scene = bpy.context.scene
+        if scene.render.engine == 'BLENDER_EEVEE' or scene.render.engine == 'BLENDER_EEVEE_NEXT':
+            # EEVEE automatically uses GPU when available
+            # Just verify the backend is set
+            if backend in ('OPENGL', 'VULKAN'):
+                return True
+        
+        return backend is not None
+        
+    except Exception as e:
+        logger.debug(f"GPU setup for EEVEE failed: {e}")
+        return False
+
+
+def enable_compositor_gpu():
+    """Enable GPU acceleration for compositor (Blender 4.5+)
+    
+    The compositor can use GPU for faster post-processing.
+    This should be called after GPU is initialized.
+    
+    Returns:
+        True if GPU compositing was enabled, False otherwise
+    """
+    try:
+        scene = bpy.context.scene
+        
+        # Enable GPU compositing if available (Blender 4.5+)
+        if hasattr(scene.render, 'use_compositor_gpu'):
+            scene.render.use_compositor_gpu = True
+            logger.debug("GPU compositing enabled")
+            return True
+        elif hasattr(scene.render, 'use_compositor'):
+            # Fallback: just enable compositing
+            scene.render.use_compositor = 'GPU' if hasattr(scene.render, 'compositor_gpu') else True
+            logger.debug("Compositing enabled")
+            return True
+        
+        return False
+    except Exception as e:
+        logger.debug(f"Failed to enable GPU compositing: {e}")
+        return False
+
+
+def setup_rendering(width: int = 512, height: int = 512, engine: str = 'BLENDER_EEVEE_NEXT', gpu_backend: Optional[str] = None):
+    """Configure render settings - simple and fast
+    
+    Args:
+        width: Render width in pixels
+        height: Render height in pixels
+        engine: Render engine ('BLENDER_EEVEE_NEXT' or 'CYCLES')
+        gpu_backend: GPU backend to use ('VULKAN' or 'OPENGL'). If None, uses current setting.
+    """
     scene = bpy.context.scene
+    
+    # Set GPU backend if specified (Blender 4.5+ supports Vulkan)
+    if gpu_backend is not None:
+        set_gpu_backend(gpu_backend)
+    elif engine in ('BLENDER_EEVEE', 'BLENDER_EEVEE_NEXT'):
+        # For EEVEE, ensure GPU is initialized and backend is available
+        ensure_gpu_for_eevee()
+    
+    # Enable GPU compositing for better performance (Blender 4.5+)
+    enable_compositor_gpu()
     
     # Basic settings
     scene.render.engine = engine
     scene.render.resolution_x = width
     scene.render.resolution_y = height
+    
+    # Set pixel aspect ratio to 1:1 (square pixels)
+    scene.render.pixel_aspect_x = 1.0
+    scene.render.pixel_aspect_y = 1.0
+    
+    # Update camera aspect ratio if camera exists
+    if scene.camera:
+        scene.camera.data.sensor_fit = 'AUTO'
     scene.render.resolution_percentage = 100
     scene.render.film_transparent = False
     scene.render.image_settings.file_format = 'PNG'
@@ -32,9 +216,31 @@ def setup_rendering(width: int = 512, height: int = 512, engine: str = 'BLENDER_
         scene.eevee.taa_render_samples = 16
         scene.eevee.use_raytracing = False
         
-    # Simple color management
-    scene.view_settings.view_transform = 'Standard'
-    scene.view_settings.look = 'None'
+    # Configure color management properly for headless operation
+    # This prevents "AgX not found" and OpenColorIO warnings
+    try:
+        # Set view transform to Standard (always available, unlike AgX)
+        # Must be set BEFORE any rendering operations
+        if hasattr(scene.view_settings, 'view_transform'):
+            scene.view_settings.view_transform = 'Standard'
+        
+        # Set look to None (no look modification)
+        if hasattr(scene.view_settings, 'look'):
+            scene.view_settings.look = 'None'
+        
+        # Configure display device (sRGB is most compatible for headless)
+        if hasattr(scene.display_settings, 'display_device'):
+            scene.display_settings.display_device = 'sRGB'
+        
+        # Configure sequencer color space (if available)
+        if hasattr(scene, 'sequencer_colorspace_settings'):
+            if hasattr(scene.sequencer_colorspace_settings, 'name'):
+                scene.sequencer_colorspace_settings.name = 'sRGB'
+            
+    except Exception:
+        # If color management setup fails, silently continue
+        # Standard transform should always work as fallback
+        pass
 
 
 def render_to_pixels() -> Tuple[Optional[np.ndarray], int, int]:

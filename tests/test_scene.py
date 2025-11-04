@@ -32,7 +32,8 @@ def test_clear_scene_removes_orphaned_data(clean_scene):
     """Test that clear_scene removes orphaned data blocks"""
     # Create object with mesh and material
     bpy.ops.mesh.primitive_cube_add()
-    cube = bpy.context.active_object
+    # Use last created object as fallback for headless environments
+    cube = getattr(bpy.context, 'active_object', None) or bpy.data.objects[-1]
 
     # Create material
     mat = bpy.data.materials.new(name="TestMaterial")

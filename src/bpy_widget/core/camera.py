@@ -8,8 +8,16 @@ import bpy
 import mathutils
 
 
-def setup_camera(distance: float = 10.0, target: Tuple[float, float, float] = (0, 0, 1)) -> bpy.types.Object:
-    """Setup camera with spherical positioning around target"""
+def setup_camera(distance: float = 10.0, target: Tuple[float, float, float] = (0, 0, 1), 
+                 width: int = 512, height: int = 512) -> bpy.types.Object:
+    """Setup camera with spherical positioning around target
+    
+    Args:
+        distance: Camera distance from target
+        target: Target point to look at
+        width: Render width (for aspect ratio calculation)
+        height: Render height (for aspect ratio calculation)
+    """
     # Remove existing camera if any
     if bpy.context.scene.camera:
         bpy.data.objects.remove(bpy.context.scene.camera, do_unlink=True)
@@ -34,6 +42,10 @@ def setup_camera(distance: float = 10.0, target: Tuple[float, float, float] = (0
     direction = target_location - camera_location
     camera.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
     
+    # Configure camera sensor to match render aspect ratio
+    # Use 'AUTO' sensor fit to automatically adjust to render resolution
+    camera.data.sensor_fit = 'AUTO'
+    
     bpy.context.scene.camera = camera
     return camera
 
@@ -56,12 +68,23 @@ def update_camera_position(location: Tuple[float, float, float], target: Tuple[f
         camera.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
 
 
-def update_camera_spherical(distance: float, angle_x: float, angle_z: float, target: Tuple[float, float, float] = (0, 0, 1)) -> bool:
-    """Update camera position using spherical coordinates"""
+def update_camera_spherical(distance: float, angle_x: float, angle_z: float, 
+                           target: Tuple[float, float, float] = (0, 0, 1),
+                           width: int = 512, height: int = 512) -> bool:
+    """Update camera position using spherical coordinates
+    
+    Args:
+        distance: Camera distance from target
+        angle_x: Elevation angle
+        angle_z: Azimuth angle
+        target: Target point to look at
+        width: Render width (for aspect ratio calculation)
+        height: Render height (for aspect ratio calculation)
+    """
     camera = bpy.context.scene.camera
     
     if not camera:
-        setup_camera()
+        setup_camera(distance, target, width, height)
         camera = bpy.context.scene.camera
     
     if not camera:
@@ -80,6 +103,9 @@ def update_camera_spherical(distance: float, angle_x: float, angle_z: float, tar
     target_location = mathutils.Vector(target)
     direction = target_location - camera_location
     camera.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
+    
+    # Ensure sensor fit matches render aspect ratio
+    camera.data.sensor_fit = 'AUTO'
     
     return True
 

@@ -89,7 +89,7 @@ __all__ = ['BpyWidget', 'BlenderWidget']
 
 class BpyWidget(anywidget.AnyWidget):
     """Blender widget with interactive camera control"""
-
+    
     # Development mode support (ANYWIDGET_HMR=1) - dynamic loading
     @property
     def _esm(self):
@@ -116,6 +116,12 @@ class BpyWidget(anywidget.AnyWidget):
     camera_distance = traitlets.Float(8.0).tag(sync=True)
     camera_angle_x = traitlets.Float(1.1).tag(sync=True)  
     camera_angle_z = traitlets.Float(0.785).tag(sync=True)
+    camera_target = traitlets.Tuple(
+        traitlets.Float(0.0),
+        traitlets.Float(0.0),
+        traitlets.Float(1.0),
+        default_value=(0.0, 0.0, 1.0)
+    ).tag(sync=True)
     
     # Render settings
     render_engine = traitlets.Unicode('BLENDER_EEVEE_NEXT').tag(sync=True)
@@ -163,7 +169,7 @@ class BpyWidget(anywidget.AnyWidget):
         self.height = height
         self._pixel_array: typing.Optional[np.ndarray] = None
         self._just_initialized = False
-
+        
         # Update infrastructure following Three.js pattern:
         # - Mark updates as needed (like camera controls)
         # - Only render when update() returns True and enough time has passed
@@ -172,13 +178,13 @@ class BpyWidget(anywidget.AnyWidget):
         self._render_debounce_ms = 20  # Minimum time between renders (~50 FPS max, rendering is ~16ms)
 
         logger.info(f"BpyWidget created: {width}x{height}")
-
+        
         # Check extension support
         if hasattr(bpy.context.preferences, 'extensions'):
             repos = extension_manager.list_repositories()
             if repos:
                 logger.info(f"Extensions Platform: {len(repos)} repositories available")
-
+        
         if auto_init:
             self.initialize()
 
@@ -247,8 +253,34 @@ class BpyWidget(anywidget.AnyWidget):
         global bpy
         if bpy is None:
             try:
+                # Setup missing datafiles BEFORE importing bpy (avoids font warnings)
+                # This fixes "OpenColorIO Error" and "Can't find font" warnings
+                try:
+                    from .core.setup_datafiles import setup_datafiles_if_needed
+                    setup_datafiles_if_needed()
+                except Exception as e:
+                    logger.debug(f"Could not setup datafiles (optional): {e}")
+                
+                # Now import bpy - fonts should already be in place
                 import bpy
                 logger.debug("bpy imported successfully")
+                
+                # Initialize GPU module after bpy import (required for OpenGL/EEVEE)
+                # This makes the gpu module available for EEVEE rendering
+                try:
+                    from .core.rendering import initialize_gpu
+                    initialize_gpu()
+                except Exception as e:
+                    logger.debug(f"GPU initialization skipped: {e}")
+                
+                # Configure color management IMMEDIATELY after import
+                # This prevents "AgX not found" warnings by setting Standard transform
+                # Must happen BEFORE any scene operations
+                self._configure_color_management()
+                
+                # Suppress font and other warnings in headless mode (fallback)
+                self._configure_blender_warnings()
+                
                 # Test if bpy is functional
                 _ = bpy.app.version_string  # This should work
             except ImportError as e:
@@ -258,8 +290,114 @@ class BpyWidget(anywidget.AnyWidget):
                 logger.error(f"bpy import succeeded but is not functional: {e}")
                 logger.info("This usually means bpy_types is missing. Try reinstalling bpy.")
                 raise ImportError(f"bpy is not functional: {e}") from e
+    
+    @staticmethod
+    def _configure_color_management():
+        """Configure Blender color management for headless operation
+        
+        This must be called immediately after bpy import, before any scene access.
+        Prevents "AgX not found" and OpenColorIO warnings in headless mode.
+        """
+        try:
+            import bpy
+            
+            # Access scene to trigger initialization if needed
+            # Then immediately configure color management BEFORE any operations
+            scene = bpy.context.scene
+            
+            # Set view transform to Standard (always available, unlike AgX)
+            # This prevents Blender from trying to use AgX and showing warnings
+            if hasattr(scene.view_settings, 'view_transform'):
+                try:
+                    scene.view_settings.view_transform = 'Standard'
+                except (AttributeError, KeyError, TypeError):
+                    # If setting fails, try to read what's available
+                    pass
+            
+            # Set look to None (no look modification)  
+            if hasattr(scene.view_settings, 'look'):
+                try:
+                    scene.view_settings.look = 'None'
+                except (AttributeError, KeyError, TypeError):
+                    pass
+            
+            # Configure display device (sRGB is most compatible for headless)
+            if hasattr(scene.display_settings, 'display_device'):
+                try:
+                    scene.display_settings.display_device = 'sRGB'
+                except (AttributeError, KeyError, TypeError):
+                    pass
+                    
+        except Exception:
+            # Silently fail - this is best effort configuration
+            # If it fails, we'll still have stderr filtering as fallback
+            pass
+    
+    @staticmethod
+    def _configure_blender_warnings():
+        """Configure Blender to suppress non-critical warnings"""
+        import warnings
+        import sys
+        import io
+        
+        # Suppress Python warnings for missing fonts (blender internal)
+        warnings.filterwarnings('ignore', category=UserWarning, module='imbuf')
+        
+        # Suppress Python warnings for color management
+        warnings.filterwarnings('ignore', message='.*Color management.*', category=UserWarning)
+        warnings.filterwarnings('ignore', message='.*OpenColorIO.*', category=UserWarning)
+        
+        # Filter stderr to suppress Blender's C++ warnings (fonts, color management)
+        # These come from C++ code and can't be caught with Python warnings
+        if not hasattr(sys.stderr, '_bpy_widget_filtered'):
+            class FilteredStderr:
+                """Filter stderr to suppress Blender internal warnings"""
+                def __init__(self, original):
+                    self.original = original
+                    self._bpy_widget_filtered = True
+                
+                def __getattr__(self, name):
+                    return getattr(self.original, name)
+                
+                def write(self, text):
+                    # Filter out known Blender warnings from C++ code
+                    if any(keyword in text.lower() for keyword in [
+                        "can't find font",
+                        "blf_load_font_default",
+                        "font data directory",
+                        "fonts\" data path not found",
+                        "color management:",
+                        "opencolorio error",
+                        "colormanagement",
+                        "scene view",
+                        "using fallback mode",
+                    ]):
+                        return len(text)  # Return length to prevent errors
+                    return self.original.write(text)
+            
+            sys.stderr = FilteredStderr(sys.stderr)
+        
+        # Try to configure bpy.app.debug if available
+        try:
+            import bpy
+            # Reduce debug verbosity for headless operation
+            if hasattr(bpy.app, 'debug'):
+                # Only enable critical errors, suppress warnings
+                if isinstance(bpy.app.debug, bool):
+                    # Can't fully disable, but we can suppress Python-level warnings
+                    pass
+            elif hasattr(bpy.app, 'debug_value'):
+                # Some versions use debug_value
+                # Lower values = less verbose (0 = minimal, 1 = normal, 2 = verbose)
+                try:
+                    bpy.app.debug_value = 0
+                except (AttributeError, TypeError):
+                    pass
+        except Exception:
+            # Ignore errors in warning configuration
+            pass
 
-    @traitlets.observe('camera_distance', 'camera_angle_x', 'camera_angle_z')
+    @traitlets.observe('camera_distance', 'camera_angle_x', 'camera_angle_z', 'camera_target')
     def _on_camera_change(self, change):
         """Handle camera parameter changes from frontend - mark update as needed"""
         if self.is_initialized and not self._just_initialized:
@@ -322,11 +460,17 @@ class BpyWidget(anywidget.AnyWidget):
     def _update_camera_and_render(self):
         """Update camera and render (called after debounce or immediately)"""
         try:
+            # Get camera target (default if not set)
+            target = tuple(self.camera_target) if hasattr(self, 'camera_target') else (0, 0, 1)
+            
             # Update camera
             update_camera_spherical(
                 self.camera_distance,
                 self.camera_angle_x, 
-                self.camera_angle_z
+                self.camera_angle_z,
+                target=target,
+                width=self.width,
+                height=self.height
             )
             
             # Render
@@ -398,7 +542,7 @@ class BpyWidget(anywidget.AnyWidget):
                     scene.cycles.use_adaptive_sampling = True
             
             # Setup camera and get initial position
-            camera = setup_camera()
+            camera = setup_camera(width=self.width, height=self.height)
             distance, angle_x, angle_z = calculate_spherical_from_position(camera.location)
             
             # Set widget traits from actual camera
@@ -456,6 +600,14 @@ class BpyWidget(anywidget.AnyWidget):
         scene.render.resolution_x = width
         scene.render.resolution_y = height
         
+        # Set pixel aspect ratio to 1:1 (square pixels)
+        scene.render.pixel_aspect_x = 1.0
+        scene.render.pixel_aspect_y = 1.0
+        
+        # Update camera sensor fit to match new aspect ratio
+        if scene.camera:
+            scene.camera.data.sensor_fit = 'AUTO'
+        
         self.status = f"Resolution set to {width}x{height}"
         self.render()
 
@@ -465,6 +617,35 @@ class BpyWidget(anywidget.AnyWidget):
             self.render_engine = engine
         else:
             logger.warning(f"Invalid render engine: {engine}")
+    
+    def set_gpu_backend(self, backend: str = 'VULKAN') -> bool:
+        """Set GPU backend (VULKAN or OPENGL)
+        
+        Blender 4.5+ supports Vulkan backend for improved performance.
+        Note: May require widget re-initialization for full effect.
+        
+        Args:
+            backend: Either 'VULKAN' or 'OPENGL'
+            
+        Returns:
+            True if backend was set successfully
+        """
+        from .core.rendering import set_gpu_backend
+        result = set_gpu_backend(backend)
+        if result:
+            self.status = f"GPU backend set to {backend}"
+        else:
+            self.status = f"Failed to set GPU backend to {backend}"
+        return result
+    
+    def get_gpu_backend(self) -> Optional[str]:
+        """Get current GPU backend
+        
+        Returns:
+            Current backend ('VULKAN' or 'OPENGL') or None if unavailable
+        """
+        from .core.rendering import get_gpu_backend
+        return get_gpu_backend()
 
     # ========== Extension Management ==========
     
@@ -554,6 +735,46 @@ class BpyWidget(anywidget.AnyWidget):
             self.status = f"Install failed: {str(e)}"
             return False
     
+    def install_extension(
+        self,
+        source: str,
+        pkg_id: str = "",
+        enable_on_install: bool = True
+    ) -> bool:
+        """Install extension from any source
+
+        Universal installation method. Automatically enables online access if needed.
+
+        Examples:
+            # Install by package ID (searches and installs)
+            widget.install_extension("molecularnodes")
+
+            # Install from URL
+            widget.install_extension("https://extensions.blender.org/...", pkg_id="molecularnodes")
+
+            # Install from local file
+            widget.install_extension("/path/to/extension.zip", pkg_id="my_extension")
+
+        Args:
+            source: Package ID, download URL, or local file path
+            pkg_id: Package ID (required for URLs and files)
+            enable_on_install: Enable the extension after installation
+
+        Returns:
+            True if installation succeeded
+        """
+        try:
+            self.status = f"Installing extension..."
+            result = extension_manager.install_extension(source, pkg_id, enable_on_install)
+            if result:
+                self.status = f"Installation complete"
+            else:
+                self.status = "Installation failed"
+            return result
+        except Exception as e:
+            self.status = f"Install failed: {str(e)}"
+            return False
+    
     def upgrade_extensions(self, active_only: bool = False) -> bool:
         """Upgrade extensions to latest versions"""
         try:
@@ -562,6 +783,113 @@ class BpyWidget(anywidget.AnyWidget):
             return True
         except Exception as e:
             self.status = f"Upgrade failed: {str(e)}"
+            return False
+    
+    def search_extensions(self, query: str, limit: int = 50, category: typing.Optional[str] = None) -> typing.List[typing.Dict]:
+        """Search extensions online
+
+        Automatically enables online access if needed.
+
+        Args:
+            query: Search query string
+            limit: Maximum number of results (default: 50)
+            category: Optional category filter (e.g., 'add-on', 'theme')
+
+        Returns:
+            List of extension dictionaries with id, name, tagline, version, type, download_url, homepage_url
+        """
+        try:
+            self.status = "Searching extensions..."
+            results = extension_manager.search_extensions(query, limit, category)
+            
+            if results:
+                self.status = f"Found {len(results)} extensions"
+            else:
+                self.status = "No extensions found"
+            
+            return results
+        except Exception as e:
+            self.status = f"Search failed: {str(e)}"
+            return []
+    
+    def search_and_install(
+        self,
+        query: str,
+        index: int = 0,
+        enable_on_install: bool = True
+    ) -> bool:
+        """Search and install extension in one step
+        
+        This is the most convenient way to install extensions - just provide a search query
+        and it will install the first result.
+        
+        Example:
+            widget.search_and_install("molecular nodes")
+            widget.search_and_install("node wrangler", index=0)
+        
+        Args:
+            query: Search query string
+            index: Index of result to install (default: 0 = first result)
+            enable_on_install: Enable the extension after installation
+        
+        Returns:
+            True if installation started successfully, False otherwise
+        """
+        if not bpy.app.online_access:
+            self.status = "Online access required"
+            return False
+        
+        # Search extensions
+        results = self.search_extensions(query, limit=20)
+        
+        if not results:
+            self.status = f"No extensions found for: {query}"
+            return False
+        
+        if index >= len(results):
+            self.status = f"Index {index} out of range. Found {len(results)} results"
+            return False
+        
+        # Get selected extension
+        selected = results[index]
+        download_url = selected.get('download_url', '')
+        pkg_id = selected.get('id', '')
+
+        if not download_url:
+            self.status = f"No download URL available for: {selected.get('name', 'Unknown')}"
+            return False
+
+        if not pkg_id:
+            self.status = f"No package ID available for: {selected.get('name', 'Unknown')}"
+            return False
+
+        # Install extension
+        self.status = f"Installing: {selected.get('name', 'Unknown')}..."
+        result = self.install_extension(download_url, pkg_id=pkg_id, enable_on_install=enable_on_install)
+        
+        if result:
+            self.status = f"Installed: {selected.get('name', 'Unknown')}"
+        else:
+            self.status = f"Installation failed for: {selected.get('name', 'Unknown')}"
+        
+        return result
+    
+    def uninstall_extension(self, pkg_id: str, repo_index: int = -1) -> bool:
+        """Uninstall an extension
+        
+        Args:
+            pkg_id: Extension package ID
+            repo_index: Repository index (-1 for auto-select)
+        
+        Returns:
+            True if uninstallation started successfully
+        """
+        try:
+            extension_manager.uninstall_extension(pkg_id, repo_index)
+            self.status = f"Uninstalled: {pkg_id}"
+            return True
+        except Exception as e:
+            self.status = f"Uninstall failed: {str(e)}"
             return False
     
     # Legacy addon support
@@ -590,12 +918,12 @@ class BpyWidget(anywidget.AnyWidget):
             return False
 
     # ========== Scene Management Methods ==========
-
+    
     def clear_scene(self):
         """Clear all objects from the scene"""
         clear_scene()
         self.status = "Scene cleared"
-
+        
     def setup_camera(self, distance=8.0, target=(0, 0, 0)):
         """Setup or reset camera"""
         camera = setup_camera(distance=distance, target=target)
@@ -607,7 +935,7 @@ class BpyWidget(anywidget.AnyWidget):
             self.camera_angle_z = angle_z
         self.status = "Camera reset"
         return camera
-
+        
     def setup_lighting(self, **kwargs):
         """Setup basic lighting"""
         setup_lighting(**kwargs)
@@ -633,7 +961,7 @@ class BpyWidget(anywidget.AnyWidget):
     def create_material(self, name: str, **kwargs):
         """Create material with PBR parameters"""
         return create_material(name, **kwargs)
-
+        
     def create_preset_material(self, name: str, preset: str):
         """Create material from preset (gold, glass, etc.)"""
         return create_preset_material(name, preset)
@@ -951,7 +1279,7 @@ class BpyWidget(anywidget.AnyWidget):
         print(f"Widget status: {self.status}")
         print(f"Widget size: {self.width}x{self.height}")
         print(f"Camera: distance={self.camera_distance}, angles=({self.camera_angle_x}, {self.camera_angle_z})")
-
+        
         scene = get_scene()
         if scene.camera:
             print(f"\nCamera location: {scene.camera.location}")

@@ -32,6 +32,12 @@ export default {
             const width = model.get('width');
             const height = model.get('height');
             
+            // Update widget container aspect ratio to match render resolution
+            if (width && height && width > 0 && height > 0) {
+                const aspectRatio = width / height;
+                widgetContainer.style.aspectRatio = `${aspectRatio} / 1`;
+            }
+            
             renderer.updateDisplay(imageData, width, height);
             
             // Update stats overlay

@@ -43,11 +43,18 @@ from .io_handlers import (
     import_scene_from_parquet,
     import_usd,
 )
+from .lighting import (
+    setup_environment_lighting,
+    setup_lighting,
+    setup_sun_light,
+    setup_three_point_lighting,
+    setup_world_background,
+)
 from .materials import (
+    MATERIAL_PRESETS,
     assign_material,
     create_material,
     create_preset_material,
-    MATERIAL_PRESETS,
     get_or_create_material,
 )
 from .nodes import add_glare_node, setup_compositor
@@ -64,20 +71,21 @@ from .post_processing import (
     setup_extended_compositor,
 )
 from .rendering import (
+    enable_compositor_gpu,
+    ensure_gpu_for_eevee,
+    get_gpu_backend,
+    initialize_gpu,
     render_to_pixels,
+    set_gpu_backend,
     setup_rendering,
 )
+
+# Extension manager imports (handled directly in widget)
 from .scene import (
     clear_scene,
     get_scene,
 )
-from .lighting import (
-    setup_lighting,
-    setup_world_background,
-    setup_three_point_lighting,
-    setup_environment_lighting,
-    setup_sun_light,
-)
+from .setup_datafiles import setup_datafiles, setup_datafiles_if_needed
 from .temp_files import cleanup_all, cleanup_file, create_temp_file, get_render_file
 
 __all__ = [
@@ -141,6 +149,11 @@ __all__ = [
     # Rendering
     'setup_rendering',
     'render_to_pixels',
+    'set_gpu_backend',
+    'get_gpu_backend',
+    'initialize_gpu',
+    'ensure_gpu_for_eevee',
+    'enable_compositor_gpu',
     # Scene
     'clear_scene',
     'get_scene',
@@ -155,4 +168,10 @@ __all__ = [
     'create_temp_file',
     'cleanup_file',
     'cleanup_all',
+    # Setup
+    'setup_datafiles',
+    'setup_datafiles_if_needed',
+    # Extensions
+    'install_extension',
+    'search_extensions',
 ]

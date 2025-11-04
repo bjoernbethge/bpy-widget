@@ -16,9 +16,7 @@ import marimo
 __generated_with = "0.17.6"
 app = marimo.App()
 
-
-@app.cell
-def setup():
+with app.setup:
     """Setup widget and data directory"""
     from pathlib import Path
 
@@ -32,18 +30,16 @@ def setup():
     data_dir = Path("sample_data")
     data_dir.mkdir(exist_ok=True)
 
-    return BpyWidget, data_dir, mo, np, pl, widget
-
 
 @app.cell
-def viewport(mo, widget):
+def viewport():
     """Main Viewport"""
     widget
     return
 
 
 @app.cell
-def create_sample_data(data_dir, mo, np, pl):
+def create_sample_data():
     """Generate sample datasets"""
     # Spiral dataset
     t = np.linspace(0, 4 * np.pi, 100)
@@ -81,12 +77,11 @@ def create_sample_data(data_dir, mo, np, pl):
     - points.parquet ({len(point_cloud)} points)
     - timeseries.csv ({len(time_series)} rows)
     """)
-
-    return point_cloud, spiral_data, time_series
+    return
 
 
 @app.cell
-def import_options(mo):
+def import_options():
     """Import Options"""
     import_type = mo.ui.dropdown(
         options=["points", "series", "batch"],
@@ -105,12 +100,11 @@ def import_options(mo):
         import_type,
         file_dropdown,
     ])
-
     return file_dropdown, import_type
 
 
 @app.cell
-def apply_import(data_dir, file_dropdown, import_type, widget):
+def apply_import(file_dropdown, import_type):
     """Apply Import based on selection"""
     file_path = data_dir / file_dropdown.value
 
@@ -172,7 +166,7 @@ def apply_import(data_dir, file_dropdown, import_type, widget):
 
 
 @app.cell
-def visualization_controls(mo):
+def visualization_controls():
     """Visualization Controls"""
     point_size = mo.ui.slider(
         start=0.01, stop=0.2, value=0.05, step=0.01,
@@ -189,12 +183,11 @@ def visualization_controls(mo):
         point_size,
         emission_strength,
     ])
-
-    return emission_strength, point_size
+    return (emission_strength,)
 
 
 @app.cell
-def apply_viz_settings(emission_strength, point_size, widget):
+def apply_viz_settings(emission_strength):
     """Apply Visualization Settings"""
     # Update emission strength for all emission materials
     for material in widget.data.materials:
@@ -210,7 +203,7 @@ def apply_viz_settings(emission_strength, point_size, widget):
 
 
 @app.cell
-def scene_info(mo, widget):
+def scene_info():
     """Scene Info"""
     mo.md(f"""
     **Scene:** {len(widget.objects)} objects |

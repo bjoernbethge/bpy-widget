@@ -1,15 +1,26 @@
 """
 Extended post-processing effects for compositor - Blender 4.5 compatible
 """
-import bpy
 from typing import Optional, Tuple
+
+import bpy
 
 
 def setup_extended_compositor() -> bpy.types.NodeTree:
-    """Setup compositor with extended post-processing capabilities"""
+    """Setup compositor with extended post-processing capabilities
+    
+    Enables GPU acceleration for compositor if available (Blender 4.5+)
+    """
     scene = bpy.context.scene
     scene.use_nodes = True
     scene.render.use_compositing = True
+    
+    # Enable GPU compositing for better performance (Blender 4.5+)
+    try:
+        if hasattr(scene.render, 'use_compositor_gpu'):
+            scene.render.use_compositor_gpu = True
+    except Exception:
+        pass  # GPU compositing not available in this version
     
     tree = scene.node_tree
     nodes = tree.nodes

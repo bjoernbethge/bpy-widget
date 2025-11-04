@@ -14,6 +14,7 @@ dependencies = [
     "polars>=1.19.0",
     "numpy>=1.26.0",
     "loguru>=0.7.3",
+    "httpx>=0.24.0",
     "bpy==4.5.4",
 ]
 keywords = [
@@ -52,11 +53,12 @@ build-backend = "hatchling.build"
 packages = ["src/bpy_widget"]
 include = [
     "src/bpy_widget/static/**/*",
+    "src/bpy_widget/datafiles/**/*",
 ]
 
 [dependency-groups]
 dev = [
-    "marimo",
+    "marimo[recommended, mcp]",
     "pyzmq>=27.1.0",
     "nbformat",
     "pytest",

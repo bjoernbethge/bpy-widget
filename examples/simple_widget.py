@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#     "marimo",
+#     "marimo>=0.17.0",
 #     "pyzmq",
 # ]
 # ///
