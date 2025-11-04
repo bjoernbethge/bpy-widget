@@ -27,7 +27,7 @@ with app.setup:
 
     from bpy_widget import BpyWidget
 
-    widget = BpyWidget(width=800, height=600)
+    widget = BpyWidget(width=1920, height=1080)
 
 
 @app.cell

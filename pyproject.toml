@@ -73,4 +73,4 @@ link-mode = "copy"
 
 [tool.marimo.runtime]
 pythonpath = ["src"]
-output_max_bytes = 10_000_000
+output_max_bytes = 100_000_000
