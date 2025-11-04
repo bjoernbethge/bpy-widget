@@ -26,7 +26,9 @@ def get_package_datafiles_path() -> Path:
     
     # If ZIP exists, extract to cache if needed
     if zip_path.exists():
-        if not cache_dir.exists() or not (cache_dir / "colormanagement").exists():
+        # Check if extraction is needed (ZIP contains 'datafiles/' root)
+        extracted_datafiles = cache_dir / "datafiles"
+        if not cache_dir.exists() or not extracted_datafiles.exists():
             try:
                 logger.debug("Extracting datafiles from ZIP...")
                 cache_dir.mkdir(exist_ok=True)
@@ -36,8 +38,12 @@ def get_package_datafiles_path() -> Path:
             except Exception as e:
                 logger.error(f"Failed to extract datafiles ZIP: {e}")
                 return package_dir / "datafiles"  # Fallback to directory if it exists
+        
+        # ZIP extracts with 'datafiles/' root, so return that subdirectory
+        if extracted_datafiles.exists():
+            return extracted_datafiles
     
-    # Return cache if it exists, otherwise fallback to directory
+    # Return cache if it exists (even if empty)
     if cache_dir.exists():
         return cache_dir
     
@@ -288,6 +294,7 @@ def setup_datafiles_if_needed():
         ocio_needed = not ocio_config.exists()
         
         # Check if LUTs exist (check for at least one file in luts/ and filmic/)
+        # Note: get_package_datafiles_path() returns path with 'datafiles/' root
         luts_dir = bpy_datafiles / "colormanagement" / "luts"
         filmic_dir = bpy_datafiles / "colormanagement" / "filmic"
         
