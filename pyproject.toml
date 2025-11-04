@@ -53,6 +53,8 @@ build-backend = "hatchling.build"
 packages = ["src/bpy_widget"]
 include = [
     "src/bpy_widget/static/**/*",
+    "src/bpy_widget/datafiles.zip",
+    # Include datafiles directory as fallback for development
     "src/bpy_widget/datafiles/**/*",
 ]
 

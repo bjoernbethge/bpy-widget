@@ -2,16 +2,51 @@
 Copy missing datafiles (OCIO config, LUTs, fonts) from bundled package to bpy package
 """
 import shutil
+import zipfile
 from pathlib import Path
 from typing import Tuple
 
 from loguru import logger
 
 
-def get_package_datafiles_path() -> Path:
-    """Get path to datafiles bundled with this package"""
+def get_package_datafiles_zip() -> Path:
+    """Get path to datafiles ZIP archive bundled with this package"""
     package_dir = Path(__file__).parent.parent
-    return package_dir / "datafiles"
+    return package_dir / "datafiles.zip"
+
+
+def get_package_datafiles_path() -> Path:
+    """Get path to extracted datafiles directory (temporary cache)
+    
+    If ZIP exists, extracts it to a cache directory on first access.
+    """
+    package_dir = Path(__file__).parent.parent
+    zip_path = package_dir / "datafiles.zip"
+    cache_dir = package_dir / "_datafiles_cache"
+    
+    # If ZIP exists, extract to cache if needed
+    if zip_path.exists():
+        if not cache_dir.exists() or not (cache_dir / "colormanagement").exists():
+            try:
+                logger.debug("Extracting datafiles from ZIP...")
+                cache_dir.mkdir(exist_ok=True)
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(cache_dir)
+                logger.debug("Datafiles extracted successfully")
+            except Exception as e:
+                logger.error(f"Failed to extract datafiles ZIP: {e}")
+                return package_dir / "datafiles"  # Fallback to directory if it exists
+    
+    # Return cache if it exists, otherwise fallback to directory
+    if cache_dir.exists():
+        return cache_dir
+    
+    # Final fallback: check if datafiles directory exists
+    datafiles_dir = package_dir / "datafiles"
+    if datafiles_dir.exists():
+        return datafiles_dir
+    
+    return cache_dir  # Return cache_dir even if empty (will fail later)
 
 
 def get_bpy_datafiles_path(require_bpy_import: bool = True) -> Path:
@@ -201,19 +236,17 @@ def setup_datafiles(force: bool = False) -> Tuple[bool, bool]:
         if not bpy_datafiles.exists():
             bpy_datafiles.mkdir(parents=True, exist_ok=True)
         
-        # Try to copy from bundled package datafiles first
-        package_datafiles = get_package_datafiles_path()
-        source_path = None
-        
-        if package_datafiles.exists():
+        # Try to get bundled package datafiles (from ZIP or directory)
+        try:
+            package_datafiles = get_package_datafiles_path()
             source_path = package_datafiles
-        else:
-            # Package datafiles not available - this should not happen after installation
-            logger.error("Bundled package datafiles not found. Package may be incorrectly installed.")
-            return False, False
-        
-        if not source_path:
-            logger.error("No source for datafiles found")
+            
+            if not source_path.exists():
+                # Package datafiles not available - this should not happen after installation
+                logger.error("Bundled package datafiles not found. Package may be incorrectly installed.")
+                return False, False
+        except Exception as e:
+            logger.error(f"Failed to get package datafiles: {e}")
             return False, False
         
         # Copy files
