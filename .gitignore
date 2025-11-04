@@ -9,3 +9,8 @@ wheels/
 .idea/
 # Virtual environments
 .venv
+# Datafiles cache (extracted from ZIP)
+src/bpy_widget/_datafiles_cache/
+src/bpy_widget/datafiles/
+# Test files
+test_extensions*.py
