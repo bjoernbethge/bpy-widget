@@ -38,7 +38,14 @@ export default {
                 widgetContainer.style.aspectRatio = `${aspectRatio} / 1`;
             }
             
-            renderer.updateDisplay(imageData, width, height);
+            // Only update display if we have valid image data
+            // This prevents clearing the canvas when width/height change before new image_data arrives
+            if (imageData && imageData.length > 0) {
+                renderer.updateDisplay(imageData, width, height);
+            } else if (width && height && width > 0 && height > 0) {
+                // Only show placeholder if we have dimensions but no image data yet
+                renderer.renderPlaceholder(width, height);
+            }
             
             // Update stats overlay
             const fps = renderer.getFps();
@@ -47,10 +54,41 @@ export default {
         }
         
         // Bind model events
+        // Only update canvas when image_data changes (width/height updates are handled via aspect ratio)
         model.on('change:image_data', updateDisplay);
-        model.on('change:width', updateDisplay);
-        model.on('change:height', updateDisplay);
-        model.on('change:status', updateDisplay);
+        
+        // For width/height changes, only update aspect ratio, don't re-render canvas
+        model.on('change:width', () => {
+            const width = model.get('width');
+            const height = model.get('height');
+            if (width && height && width > 0 && height > 0) {
+                const aspectRatio = width / height;
+                widgetContainer.style.aspectRatio = `${aspectRatio} / 1`;
+            }
+            // Update stats overlay
+            const fps = renderer.getFps();
+            const status = model.get('status');
+            statsOverlay.update(status, fps);
+        });
+        
+        model.on('change:height', () => {
+            const width = model.get('width');
+            const height = model.get('height');
+            if (width && height && width > 0 && height > 0) {
+                const aspectRatio = width / height;
+                widgetContainer.style.aspectRatio = `${aspectRatio} / 1`;
+            }
+            // Update stats overlay
+            const fps = renderer.getFps();
+            const status = model.get('status');
+            statsOverlay.update(status, fps);
+        });
+        
+        model.on('change:status', () => {
+            const fps = renderer.getFps();
+            const status = model.get('status');
+            statsOverlay.update(status, fps);
+        });
         
         // Initial display
         updateDisplay();

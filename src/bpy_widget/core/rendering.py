@@ -1,8 +1,6 @@
 """
 Rendering functions for bpy widget - Fast & simple
 """
-import tempfile
-from pathlib import Path
 from typing import Optional, Tuple
 
 import bpy
@@ -73,7 +71,12 @@ def initialize_gpu():
     """Initialize GPU module for OpenGL rendering
     
     This must be called after bpy is imported. The gpu module provides
-    OpenGL access needed for EEVEE rendering.
+    OpenGL access needed for EEVEE rendering and GPU Offscreen.
+    
+    In headless mode, OpenGL context may not be available unless:
+    - EGL is configured (Linux)
+    - OSMesa is available (Software rendering)
+    - Xvfb is running (virtual X11 display)
     
     Returns:
         True if GPU module was initialized successfully, False otherwise
@@ -82,21 +85,20 @@ def initialize_gpu():
     try:
         if gpu is None:
             import gpu
-            logger.debug("GPU module initialized")
         
-        # Verify GPU is available
-        if hasattr(gpu, 'capabilities'):
-            # Check OpenGL capabilities
-            caps = gpu.capabilities
-            if hasattr(caps, 'GL_MAX_TEXTURE_SIZE'):
-                logger.debug(f"OpenGL max texture size: {caps.GL_MAX_TEXTURE_SIZE}")
+        # Try to check if OpenGL context is available (silently fail in headless mode)
+        try:
+            test_offscreen = gpu.types.GPUOffScreen(1, 1)
+            test_offscreen.free()
+        except SystemError:
+            # OpenGL context not available - expected in headless mode, no need to log
+            pass
         
         return True
     except ImportError:
         logger.warning("GPU module not available - OpenGL rendering may be limited")
         return False
-    except Exception as e:
-        logger.debug(f"GPU initialization issue: {e}")
+    except Exception:
         return False
 
 
@@ -168,7 +170,7 @@ def enable_compositor_gpu():
         return False
 
 
-def setup_rendering(width: int = 512, height: int = 512, engine: str = 'BLENDER_EEVEE_NEXT', gpu_backend: Optional[str] = None):
+def setup_rendering(width: int = 1920, height: int = 1080, engine: str = 'BLENDER_EEVEE_NEXT', gpu_backend: Optional[str] = None):
     """Configure render settings - simple and fast
     
     Args:
@@ -244,115 +246,235 @@ def setup_rendering(width: int = 512, height: int = 512, engine: str = 'BLENDER_
 
 
 def render_to_pixels() -> Tuple[Optional[np.ndarray], int, int]:
-    """Render scene and return pixel array - optimized memory-based version
+    """Render scene and return pixel array - via Viewer Node (no file I/O!)
     
-    Uses memory-based rendering to avoid file I/O overhead (~30% faster).
-    Falls back to file-based if memory rendering fails.
-    
-    Performance: ~80-88ms (memory) vs ~120-125ms (file-based)
+    Clean implementation following working example:
+    - Remove all nodes, create fresh compositor setup
+    - Render to Viewer Node
+    - Read pixels directly from Viewer Node image datablock
+    - Falls back to save_render() if Viewer Node doesn't work in headless mode
     """
     if not bpy.context.scene.camera:
         logger.warning("No camera found")
         return None, 0, 0
 
     scene = bpy.context.scene
-    width = scene.render.resolution_x
-    height = scene.render.resolution_y
     
-    # Try memory-based rendering first (much faster - ~80-88ms vs ~120-125ms)
-    # Method: Render with filepath="" and access "Render Result" image
-    try:
-        # Store original filepath
+    # In headless mode, disable compositor and read Render Result directly
+    # Compositor can interfere with Render Result in headless mode
+    if bpy.app.background:
         old_filepath = scene.render.filepath
-        
-        # Set filepath to empty string to render to memory buffer
+        old_use_nodes = scene.use_nodes
+        old_use_compositing = scene.render.use_compositing
+        try:
+            scene.render.filepath = ""
+            # Disable compositor to prevent interference with Render Result
+            scene.use_nodes = False
+            scene.render.use_compositing = False
+            
+            bpy.ops.render.render(write_still=False)
+            
+            # Try to read Render Result directly (fastest method)
+            render_result = bpy.data.images.get("Render Result")
+            if render_result and render_result.pixels and len(render_result.pixels) > 0:
+                width, height = render_result.size
+                pixels_float = np.array(render_result.pixels[:], dtype=np.float32)
+                pixels_float = pixels_float.reshape((height, width, 4))
+                
+                # Check if pixels are valid (not all white/black/NaN)
+                if (pixels_float.max() > 0.0 and 
+                    pixels_float.min() < 1.0 and 
+                    not np.isnan(pixels_float).any()):
+                    pixels_uint8 = (np.clip(pixels_float, 0.0, 1.0) * 255).astype(np.uint8)
+                    pixels_array = np.flipud(pixels_uint8)
+                    scene.render.filepath = old_filepath
+                    scene.use_nodes = old_use_nodes
+                    scene.render.use_compositing = old_use_compositing
+                    return pixels_array, width, height
+            
+            # Fallback to save_render if Render Result is empty/invalid
+            scene.render.filepath = old_filepath
+            scene.use_nodes = old_use_nodes
+            scene.render.use_compositing = old_use_compositing
+            return _render_to_pixels_via_save_render(scene, scene.render.resolution_x, scene.render.resolution_y, old_filepath)
+        except Exception as e:
+            logger.error(f"Headless render failed: {e}")
+            scene.render.filepath = old_filepath
+            scene.use_nodes = old_use_nodes
+            scene.render.use_compositing = old_use_compositing
+            return None, 0, 0
+    
+    # Ensure compositor is enabled (both settings needed!)
+    scene.use_nodes = True
+    scene.render.use_compositing = True  # Critical: must be enabled!
+    tree = scene.node_tree
+    links = tree.links
+    
+    # Find or create Render Layers Node
+    render_layers = None
+    viewer = None
+    
+    for node in tree.nodes:
+        if node.type == 'R_LAYERS':
+            render_layers = node
+        elif node.type == 'VIEWER':
+            viewer = node
+    
+    # Create missing nodes (don't remove existing ones - preserve CompositorChain setup!)
+    if not render_layers:
+        render_layers = tree.nodes.new('CompositorNodeRLayers')
+        render_layers.location = 185, 285
+    
+    if not viewer:
+        viewer = tree.nodes.new('CompositorNodeViewer')
+        viewer.location = 750, 210
+        viewer.use_alpha = False  # Important: disable alpha for correct RGBA output
+    
+    # Ensure Viewer Node is properly configured
+    # Check if Viewer Node has the correct input socket
+    if 'Image' not in viewer.inputs:
+        logger.error("Viewer Node missing Image input socket")
+        return None, 0, 0
+    
+    # Set Viewer Node as active (important for compositor!)
+    tree.nodes.active = viewer
+    
+    # Connect Render Layers to Viewer
+    # Remove any existing connections to Viewer's Image input first
+    for link in list(tree.links):
+        if link.to_node == viewer and link.to_socket.name == 'Image':
+            tree.links.remove(link)
+    
+    # Connect Render Layers directly to Viewer
+    # This ensures we get the raw render output (no effects)
+    try:
+        links.new(render_layers.outputs['Image'], viewer.inputs['Image'])
+    except Exception as e:
+        logger.error(f"Failed to connect Render Layers to Viewer: {e}")
+        return None, 0, 0
+    
+    # Get Viewer Node image datablock and set resolution BEFORE rendering
+    # This ensures the Viewer Node uses the correct resolution
+    viewer_pixels_img = bpy.data.images.get('Viewer Node')
+    if not viewer_pixels_img:
+        # Viewer Node image doesn't exist yet - it will be created on first render
+        # We'll handle resolution after render
+        pass
+    else:
+        # Scale Viewer Node image to match render resolution if it exists
+        viewer_pixels_img.scale(scene.render.resolution_x, scene.render.resolution_y)
+    
+    # Store original filepath
+    old_filepath = scene.render.filepath
+    
+    try:
+        # Set filepath to empty to render to memory
         scene.render.filepath = ""
         
-        # Render without writing to file
+        # Render (without writing to disk)
         bpy.ops.render.render(write_still=False)
         
-        # After rendering, "Render Result" image should exist in bpy.data.images
-        # However, in headless mode, pixels may not be directly accessible
-        # We need to use a workaround: copy from Render Result if possible
+        # Get pixel data from Viewer Node (as in working example)
+        viewer_pixels = bpy.data.images['Viewer Node']
+        width, height = viewer_pixels.size
         
-        render_result_image = bpy.data.images.get("Render Result")
+        # Verify connection is correct - check if Viewer actually received data
+        # In headless mode, Viewer Node might not populate even if connected
+        if not viewer_pixels.pixels or len(viewer_pixels.pixels) == 0:
+            logger.warning("Viewer Node has no pixel data - connection might be broken or Viewer Node doesn't work in headless mode")
+            scene.render.filepath = old_filepath
+            return None, 0, 0
         
-        # Try to access pixels from Render Result
-        # Note: In headless mode, Render Result exists but pixels may be empty
-        # We'll try to copy pixels if they exist
-        if render_result_image:
-            try:
-                # Check if pixels are populated
-                if hasattr(render_result_image, 'pixels') and render_result_image.pixels:
-                    pixel_count = height * width * 4
-                    # Try to get pixels (may fail if not populated)
-                    if len(render_result_image.pixels) >= pixel_count:
-                        pixel_data = np.empty(pixel_count, dtype=np.float32)
-                        render_result_image.pixels.foreach_get(pixel_data)
-                        
-                        pixels_array = pixel_data.reshape((height, width, 4))
-                        pixels_array = (np.clip(pixels_array, 0, 1) * 255).astype(np.uint8)
-                        pixels_array = np.flipud(pixels_array)
-                        
-                        scene.render.filepath = old_filepath
-                        return pixels_array, width, height
-            except Exception:
-                # If direct access fails, continue to fallback
-                pass
+        # Convert to NumPy array (RGBA format, float 0-1)
+        # Use direct slice access as in working example: pixels[:]
+        pixels_float = np.array(viewer_pixels.pixels[:], dtype=np.float32)
+        pixels_float = pixels_float.reshape((height, width, 4))
         
-        # Restore filepath before fallback
+        # Check if all pixels are black (0.0) - Viewer Node might not be receiving data in headless mode
+        # In this case, we need to use save_render() to access the internal render buffer
+        if pixels_float.max() == 0.0:
+            logger.warning("Viewer Node pixels are all black - using save_render() fallback")
+            # Use save_render() to access internal render buffer (only reliable method in headless mode)
+            return _render_to_pixels_via_save_render(scene, width, height, old_filepath)
+        
+        # Convert to 8-bit (0-255)
+        pixels_uint8 = (np.clip(pixels_float, 0.0, 1.0) * 255).astype(np.uint8)
+        
+        # Flip vertically (Blender uses bottom-up, we need top-down for display)
+        pixels_array = np.flipud(pixels_uint8)
+        
+        # Restore filepath
         scene.render.filepath = old_filepath
         
-    except Exception as e:
-        logger.debug(f"Memory-based render failed, falling back to file-based: {e}")
-        # Restore filepath if it was changed
-        if 'old_filepath' in locals():
-            scene.render.filepath = old_filepath
-    
-    # Fallback to file-based rendering (slower but more reliable)
-    return _render_to_pixels_file_based()
-
-
-def _render_to_pixels_file_based() -> Tuple[Optional[np.ndarray], int, int]:
-    """File-based rendering fallback (slower but reliable)"""
-    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-        temp_file = tmp.name
-
-    try:
-        scene = bpy.context.scene
-        scene.render.filepath = temp_file
-        bpy.ops.render.render(write_still=True)
-
-        temp_path = Path(temp_file)
-        if not temp_path.exists():
-            return None, 0, 0
-
-        # Load image data
-        temp_image = bpy.data.images.load(temp_file)
-        width, height = temp_image.size
-
-        if width <= 0 or height <= 0 or not temp_image.pixels:
-            bpy.data.images.remove(temp_image)
-            return None, 0, 0
-
-        # Get pixel data efficiently
-        pixel_count = height * width * 4
-        pixel_data = np.empty(pixel_count, dtype=np.float32)
-        temp_image.pixels.foreach_get(pixel_data)
-
-        # Convert to uint8 array
-        pixels_array = pixel_data.reshape((height, width, 4))
-        pixels_array = (np.clip(pixels_array, 0, 1) * 255).astype(np.uint8)
-        pixels_array = np.flipud(pixels_array)
-
-        # Cleanup
-        bpy.data.images.remove(temp_image)
-
+        # Successfully read pixels from Viewer Node
         return pixels_array, width, height
-
-    except Exception as e:
-        logger.error(f"File-based render failed: {e}")
+        
+    except KeyError:
+        logger.error("Viewer Node image not found after render")
+        scene.render.filepath = old_filepath
         return None, 0, 0
-    finally:
-        # Always clean up temporary file
-        Path(temp_file).unlink(missing_ok=True)
+    except Exception as e:
+        logger.error(f"Render failed: {e}")
+        scene.render.filepath = old_filepath
+        return None, 0, 0
+
+
+def _render_to_pixels_via_save_render(scene, width: int, height: int, old_filepath: str) -> Tuple[Optional[np.ndarray], int, int]:
+    """Fallback: Use save_render() to access internal render buffer (only reliable method in headless mode)
+    
+    save_render() accesses Blender's internal render buffer and writes to file.
+    This is the only reliable way to get pixel data in headless mode when Viewer Node doesn't work.
+    """
+    import tempfile
+    import os
+    
+    render_result = bpy.data.images.get("Render Result")
+    if not render_result:
+        logger.warning("Render Result not found")
+        scene.render.filepath = old_filepath
+        return None, 0, 0
+    
+    # Use NamedTemporaryFile with delete=False so we can read it after save_render
+    with tempfile.NamedTemporaryFile(mode='wb', suffix='.png', delete=False) as tmp:
+        temp_file = tmp.name
+    
+    try:
+        # save_render() accesses internal render buffer and writes to file
+        render_result.save_render(temp_file)
+        
+        # Load buffer from file into temporary image datablock
+        temp_img = bpy.data.images.load(temp_file)
+        
+        # Read pixels directly from the loaded buffer
+        pixel_count = temp_img.size[0] * temp_img.size[1] * 4
+        pixels_array_float = np.empty(pixel_count, dtype=np.float32)
+        temp_img.pixels.foreach_get(pixels_array_float)
+        img_data = (pixels_array_float.reshape((temp_img.size[1], temp_img.size[0], 4)) * 255).astype(np.uint8)
+        
+        # Clean up temp image and file immediately
+        bpy.data.images.remove(temp_img)
+        os.unlink(temp_file)
+        
+        # Convert to RGBA if needed (should already be RGBA)
+        if img_data.shape[2] == 3:  # RGB -> RGBA
+            alpha = np.full((img_data.shape[0], img_data.shape[1], 1), 255, dtype=np.uint8)
+            img_data = np.concatenate([img_data, alpha], axis=2)
+        
+        # Flip vertically (Blender uses bottom-up, we need top-down for display)
+        pixels_array = np.flipud(img_data)
+        
+        result_width, result_height = pixels_array.shape[1], pixels_array.shape[0]
+        
+        scene.render.filepath = old_filepath
+        return pixels_array, result_width, result_height
+        
+    except Exception as e:
+        logger.error(f"save_render fallback failed: {e}")
+        # Clean up temp file if it exists
+        if os.path.exists(temp_file):
+            try:
+                os.unlink(temp_file)
+            except:
+                pass
+        scene.render.filepath = old_filepath
+        return None, 0, 0

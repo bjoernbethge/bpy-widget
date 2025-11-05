@@ -73,8 +73,10 @@ export class CanvasRenderer {
     }
     
     renderPlaceholder(width, height) {
-        this.canvas.width = width;
-        this.canvas.height = height;
+        if (this.canvas.width !== width || this.canvas.height !== height) {
+            this.canvas.width = width;
+            this.canvas.height = height;
+        }
         
         this.ctx.fillStyle = '#333';
         this.ctx.fillRect(0, 0, width, height);

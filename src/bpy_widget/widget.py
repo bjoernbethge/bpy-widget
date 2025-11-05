@@ -107,8 +107,8 @@ class BpyWidget(anywidget.AnyWidget):
     
     # Widget display traits
     image_data = traitlets.Unicode('').tag(sync=True)
-    width = traitlets.Int(512).tag(sync=True)
-    height = traitlets.Int(512).tag(sync=True)
+    width = traitlets.Int(1920).tag(sync=True)
+    height = traitlets.Int(1080).tag(sync=True)
     status = traitlets.Unicode('Not initialized').tag(sync=True)
     is_initialized = traitlets.Bool(False).tag(sync=True)
     
@@ -130,7 +130,7 @@ class BpyWidget(anywidget.AnyWidget):
     # Performance settings
     msg_throttle = traitlets.Int(2).tag(sync=True)
 
-    def __init__(self, width: int = 512, height: int = 512, auto_init: bool = True, **kwargs):
+    def __init__(self, width: int = 1920, height: int = 1080, auto_init: bool = True, **kwargs):
         """Initialize widget"""
         super().__init__(**kwargs)
 
@@ -149,7 +149,7 @@ class BpyWidget(anywidget.AnyWidget):
 
         # If we're in marimo, use full functionality
         if self._is_marimo_context:
-            logger.info("Detected marimo context - using full Blender functionality")
+            pass  # marimo context detected
         else:
             # Check for regular multiprocessing conflict
             self._is_multiprocessing_context = (
@@ -176,14 +176,6 @@ class BpyWidget(anywidget.AnyWidget):
         self._last_render_time = 0.0
         self._update_needed = False  # Flag: camera/state changed, render needed
         self._render_debounce_ms = 20  # Minimum time between renders (~50 FPS max, rendering is ~16ms)
-
-        logger.info(f"BpyWidget created: {width}x{height}")
-        
-        # Check extension support
-        if hasattr(bpy.context.preferences, 'extensions'):
-            repos = extension_manager.list_repositories()
-            if repos:
-                logger.info(f"Extensions Platform: {len(repos)} repositories available")
         
         if auto_init:
             self.initialize()
@@ -223,7 +215,6 @@ class BpyWidget(anywidget.AnyWidget):
 
     def _init_marimo_mode(self, width: int, height: int):
         """Initialize marimo-compatible mode with actual Blender functionality"""
-        logger.info("Initializing BpyWidget in marimo-compatible mode")
 
         # In marimo mode, we CAN use bpy because we're in the main process
         # The issue was that we were detecting multiprocessing incorrectly
@@ -236,17 +227,8 @@ class BpyWidget(anywidget.AnyWidget):
         self.status = "Marimo mode: Initializing Blender..."
         self.is_initialized = False
 
-        logger.info(f"BpyWidget marimo mode created: {width}x{height}")
-
-        # Check extension support
-        if hasattr(bpy.context.preferences, 'extensions'):
-            repos = extension_manager.list_repositories()
-            if repos:
-                logger.info(f"Extensions Platform: {len(repos)} repositories available")
-
         # Auto-initialize in marimo mode
         self.initialize()
-        logger.info("BpyWidget marimo mode initialized successfully")
 
     def _ensure_bpy_loaded(self):
         """Ensure bpy is loaded safely"""
@@ -263,7 +245,6 @@ class BpyWidget(anywidget.AnyWidget):
                 
                 # Now import bpy - fonts should already be in place
                 import bpy
-                logger.debug("bpy imported successfully")
                 
                 # Initialize GPU module after bpy import (required for OpenGL/EEVEE)
                 # This makes the gpu module available for EEVEE rendering
@@ -473,13 +454,15 @@ class BpyWidget(anywidget.AnyWidget):
                 height=self.height
             )
             
-            # Render
+            # Render (now uses Viewer Node with write_still=False - no file I/O!)
             import time
             start_time = time.time()
             pixels, w, h = render_to_pixels()
             render_time = int((time.time() - start_time) * 1000)
             
             if pixels is not None:
+                # Update display with actual rendered dimensions
+                # (Viewer Node may return different size than requested)
                 self._update_display(pixels, w, h)
                 self.status = f"Rendered {w}x{h} ({render_time}ms)"
             else:
@@ -492,16 +475,33 @@ class BpyWidget(anywidget.AnyWidget):
             traceback.print_exc()
 
     def _update_display(self, pixels_array: np.ndarray, w: int, h: int):
-        """Update display from pixel array"""
+        """Update display from pixel array - synchronizes width/height with actual rendered dimensions
+        
+        The Viewer Node may return different dimensions than requested (e.g., 256x256 instead of 512x512).
+        We need to synchronize the widget traits to match the actual rendered dimensions.
+        """
         try:
             self._pixel_array = pixels_array
             
-            # Convert to base64
+            # Convert to base64 (raw RGBA pixel data, not PNG)
+            # Frontend expects raw pixel bytes, not a PNG image
             pixels_bytes = pixels_array.tobytes()
             image_b64 = base64.b64encode(pixels_bytes).decode('ascii')
             
-            # Update only the image data
+            # Store original requested dimensions for debug message
+            original_w = self.width
+            original_h = self.height
+            
+            # Update ALL traits together within hold_sync to prevent race conditions
+            # This ensures width/height/image_data are all updated atomically
             with self.hold_sync():
+                # Update dimensions if they changed (Viewer Node may return different size)
+                if original_w != w or original_h != h:
+                    self.width = w
+                    self.height = h
+                    logger.debug(f"Render dimensions adjusted: {w}x{h} (requested: {original_w}x{original_h})")
+                
+                # Update image data - this triggers the frontend update with all data ready
                 self.image_data = image_b64
             
         except Exception as e:
@@ -514,7 +514,6 @@ class BpyWidget(anywidget.AnyWidget):
             self.status = "Already initialized"
             return
         
-        logger.info("Widget initialization started")
         try:
             self.status = "Setting up scene..."
             
@@ -560,15 +559,12 @@ class BpyWidget(anywidget.AnyWidget):
             
             bpy.context.view_layer.update()
             
-            logger.info("Scene setup complete")
-            logger.info(f"Camera initialized at distance={distance:.2f}")
-            logger.info(f"Render engine: {self.render_engine}")
-            
             self.is_initialized = True
             
             # Initial render
             self._update_camera_and_render()
             self._just_initialized = False
+            
             logger.info("Widget initialization complete")
             
         except Exception as e:
@@ -578,8 +574,6 @@ class BpyWidget(anywidget.AnyWidget):
             logger.error(f"Initialization failed: {e}")
             import traceback
             traceback.print_exc()
-        
-        logger.info("Widget initialization finished")
 
     def render(self):
         """Render with error handling"""
