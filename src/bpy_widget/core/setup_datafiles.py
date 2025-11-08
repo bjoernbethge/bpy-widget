@@ -13,9 +13,29 @@ from loguru import logger
 
 
 def get_package_datafiles_zip() -> Path:
-    """Get path to datafiles ZIP archive bundled with this package"""
+    """Get path to datafiles ZIP archive bundled with this package
+    
+    Looks for datafiles.zip in:
+    1. Package directory (when installed)
+    2. Project root directory (when in development)
+    """
+    # First check package directory (when installed)
     package_dir = Path(__file__).parent.parent
-    return package_dir / "datafiles.zip"
+    package_zip = package_dir / "datafiles.zip"
+    if package_zip.exists():
+        return package_zip
+    
+    # Fallback: find project root by looking for pyproject.toml (development mode)
+    current = Path(__file__).resolve()
+    while current.parent != current:
+        if (current / "pyproject.toml").exists():
+            root_zip = current / "datafiles.zip"
+            if root_zip.exists():
+                return root_zip
+        current = current.parent
+    
+    # Return package path even if it doesn't exist (will fail later)
+    return package_zip
 
 
 def get_package_datafiles_path() -> Path:
@@ -23,8 +43,30 @@ def get_package_datafiles_path() -> Path:
     
     If ZIP exists, extracts it to a cache directory on first access.
     """
+    # Find project root by looking for pyproject.toml
+    current = Path(__file__).resolve()
+    project_root = None
+    while current.parent != current:
+        if (current / "pyproject.toml").exists():
+            project_root = current
+            break
+        current = current.parent
+    
+    if project_root is None:
+        # Fallback: use package directory
+        project_root = Path(__file__).parent.parent
+    
+    # Check package directory first (when installed), then project root (development)
     package_dir = Path(__file__).parent.parent
-    zip_path = package_dir / "datafiles.zip"
+    package_zip = package_dir / "datafiles.zip"
+    
+    if package_zip.exists():
+        zip_path = package_zip
+    elif project_root is not None:
+        zip_path = project_root / "datafiles.zip"
+    else:
+        zip_path = package_zip  # Will fail later if doesn't exist
+    
     cache_dir = package_dir / "_datafiles_cache"
     
     # If ZIP exists, extract to cache if needed

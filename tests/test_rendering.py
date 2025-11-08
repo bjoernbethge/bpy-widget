@@ -1,4 +1,5 @@
 """Tests for rendering module"""
+import os
 import tempfile
 from pathlib import Path
 
@@ -7,6 +8,9 @@ import numpy as np
 import pytest
 
 from bpy_widget.core.rendering import render_to_pixels, setup_rendering
+
+# Use Cycles CPU in CI environments (EEVEE requires GPU)
+CI_ENGINE = 'CYCLES' if os.getenv('CI') else 'BLENDER_EEVEE_NEXT'
 
 
 def test_setup_rendering_eevee(clean_scene):
@@ -35,7 +39,12 @@ def test_setup_rendering_cycles(clean_scene):
 
 def test_render_to_pixels_with_camera(test_camera, test_cube):
     """Test rendering with camera returns valid pixel array"""
-    setup_rendering(width=512, height=512, engine='BLENDER_EEVEE_NEXT')
+    setup_rendering(width=512, height=512, engine=CI_ENGINE)
+    
+    # Ensure CPU device for Cycles in CI
+    if CI_ENGINE == 'CYCLES':
+        scene = bpy.context.scene
+        scene.cycles.device = 'CPU'
 
     pixels, width, height = render_to_pixels()
 
@@ -58,7 +67,12 @@ def test_render_to_pixels_no_camera(clean_scene):
 
 def test_temporary_file_cleanup(test_camera, test_cube):
     """Test that temporary files are properly cleaned up"""
-    setup_rendering(width=256, height=256, engine='BLENDER_EEVEE_NEXT')
+    setup_rendering(width=256, height=256, engine=CI_ENGINE)
+    
+    # Ensure CPU device for Cycles in CI
+    if CI_ENGINE == 'CYCLES':
+        scene = bpy.context.scene
+        scene.cycles.device = 'CPU'
 
     # Get temp directory before render
     temp_dir = Path(tempfile.gettempdir())

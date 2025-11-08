@@ -25,11 +25,40 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install system dependencies for headless rendering
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl1-mesa-glx \
+            libglu1-mesa \
+            libx11-6 \
+            libxext6 \
+            libxrender1 \
+            libxi6 \
+            libxfixes3 \
+            libosmesa6 \
+            xvfb
+
       - name: Install dependencies
         run: |
           uv sync --dev
 
-      - name: Run tests
+      - name: Run tests with headless display
+        env:
+          DISPLAY: :99
+          BLENDER_USER_CONFIG: /tmp/blender_config
+          BLENDER_USER_SCRIPTS: /tmp/blender_scripts
+          # Use software rendering in CI
+          LIBGL_ALWAYS_SOFTWARE: 1
+          GALLIUM_DRIVER: llvmpipe
+          # Force Cycles CPU for rendering tests in CI
+          CI: true
         run: |
-          uv run pytest -v
+          # Start virtual display for headless rendering
+          Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+          sleep 3
+          
+          # Run tests with timeout (5 minutes)
+          # Tests will automatically use Cycles CPU when CI=true
+          timeout 300 uv run pytest -v --tb=short
 
