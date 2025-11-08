@@ -3,7 +3,7 @@ Import/Export handlers for various 3D formats
 """
 import os
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict, Any
 
 import bpy
 import numpy as np
@@ -433,3 +433,209 @@ def import_scene_from_parquet(
     
     print(f"Imported {len(created_objects)} objects from {file_path.name}")
     return created_objects
+
+
+def load_blend(file_path: Union[str, Path], load_ui: bool = False) -> None:
+    """
+    Load a Blender (.blend) file
+    
+    Args:
+        file_path: Path to .blend file
+        load_ui: Load UI settings (window layout, etc.)
+    """
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"Blend file not found: {file_path}")
+    
+    if not file_path.suffix.lower() == '.blend':
+        raise ValueError(f"File must be a .blend file: {file_path}")
+    
+    # Load blend file
+    bpy.ops.wm.open_mainfile(filepath=str(file_path), load_ui=load_ui)
+    
+    print(f"Loaded blend file: {file_path.name}")
+
+
+def save_blend(file_path: Union[str, Path], compress: bool = True) -> None:
+    """
+    Save current scene as Blender (.blend) file
+    
+    Args:
+        file_path: Output file path
+        compress: Compress the blend file
+    """
+    file_path = Path(file_path)
+    
+    # Ensure correct extension
+    if not file_path.suffix.lower() == '.blend':
+        file_path = file_path.with_suffix('.blend')
+    
+    # Validate output path
+    _validate_output_path(file_path)
+    
+    # Save blend file
+    bpy.ops.wm.save_as_mainfile(filepath=str(file_path), compress=compress)
+    
+    print(f"Saved blend file: {file_path.name}")
+
+
+def link_from_blend(
+    file_path: Union[str, Path],
+    category: str = 'Object',
+    name: Optional[str] = None
+) -> List[Any]:
+    """
+    Link data from another Blender file (reference, not copy)
+    
+    Args:
+        file_path: Path to source .blend file
+        category: Data category ('Object', 'Material', 'Mesh', 'Collection', etc.)
+        name: Specific name to link (if None, links all of category)
+    
+    Returns:
+        List of linked data blocks
+    """
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"Blend file not found: {file_path}")
+    
+    if not file_path.suffix.lower() == '.blend':
+        raise ValueError(f"File must be a .blend file: {file_path}")
+    
+    # Link data from blend file
+    with bpy.data.libraries.load(str(file_path), link=True) as (data_from, data_to):
+        if category == 'Object':
+            if name:
+                if name in data_from.objects:
+                    data_to.objects = [name]
+                else:
+                    raise ValueError(f"Object '{name}' not found in {file_path.name}")
+            else:
+                data_to.objects = data_from.objects
+        elif category == 'Material':
+            if name:
+                if name in data_from.materials:
+                    data_to.materials = [name]
+                else:
+                    raise ValueError(f"Material '{name}' not found in {file_path.name}")
+            else:
+                data_to.materials = data_from.materials
+        elif category == 'Mesh':
+            if name:
+                if name in data_from.meshes:
+                    data_to.meshes = [name]
+                else:
+                    raise ValueError(f"Mesh '{name}' not found in {file_path.name}")
+            else:
+                data_to.meshes = data_from.meshes
+        elif category == 'Collection':
+            if name:
+                if name in data_from.collections:
+                    data_to.collections = [name]
+                else:
+                    raise ValueError(f"Collection '{name}' not found in {file_path.name}")
+            else:
+                data_to.collections = data_from.collections
+        else:
+            raise ValueError(f"Unsupported category: {category}")
+    
+    # Link objects/collections to scene
+    linked_items = []
+    if category == 'Object':
+        for obj in data_to.objects:
+            if obj:
+                bpy.context.collection.objects.link(obj)
+                linked_items.append(obj)
+    elif category == 'Collection':
+        for coll in data_to.collections:
+            if coll:
+                bpy.context.scene.collection.children.link(coll)
+                linked_items.append(coll)
+    elif category == 'Material':
+        linked_items = list(data_to.materials)
+    elif category == 'Mesh':
+        linked_items = list(data_to.meshes)
+    
+    print(f"Linked {len(linked_items)} {category}(s) from {file_path.name}")
+    return linked_items
+
+
+def append_from_blend(
+    file_path: Union[str, Path],
+    category: str = 'Object',
+    name: Optional[str] = None
+) -> List[Any]:
+    """
+    Append data from another Blender file (copy, not reference)
+    
+    Args:
+        file_path: Path to source .blend file
+        category: Data category ('Object', 'Material', 'Mesh', 'Collection', etc.)
+        name: Specific name to append (if None, appends all of category)
+    
+    Returns:
+        List of appended data blocks
+    """
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"Blend file not found: {file_path}")
+    
+    if not file_path.suffix.lower() == '.blend':
+        raise ValueError(f"File must be a .blend file: {file_path}")
+    
+    # Append data from blend file
+    with bpy.data.libraries.load(str(file_path), link=False) as (data_from, data_to):
+        if category == 'Object':
+            if name:
+                if name in data_from.objects:
+                    data_to.objects = [name]
+                else:
+                    raise ValueError(f"Object '{name}' not found in {file_path.name}")
+            else:
+                data_to.objects = data_from.objects
+        elif category == 'Material':
+            if name:
+                if name in data_from.materials:
+                    data_to.materials = [name]
+                else:
+                    raise ValueError(f"Material '{name}' not found in {file_path.name}")
+            else:
+                data_to.materials = data_from.materials
+        elif category == 'Mesh':
+            if name:
+                if name in data_from.meshes:
+                    data_to.meshes = [name]
+                else:
+                    raise ValueError(f"Mesh '{name}' not found in {file_path.name}")
+            else:
+                data_to.meshes = data_from.meshes
+        elif category == 'Collection':
+            if name:
+                if name in data_from.collections:
+                    data_to.collections = [name]
+                else:
+                    raise ValueError(f"Collection '{name}' not found in {file_path.name}")
+            else:
+                data_to.collections = data_from.collections
+        else:
+            raise ValueError(f"Unsupported category: {category}")
+    
+    # Link objects/collections to scene
+    appended_items = []
+    if category == 'Object':
+        for obj in data_to.objects:
+            if obj:
+                bpy.context.collection.objects.link(obj)
+                appended_items.append(obj)
+    elif category == 'Collection':
+        for coll in data_to.collections:
+            if coll:
+                bpy.context.scene.collection.children.link(coll)
+                appended_items.append(coll)
+    elif category == 'Material':
+        appended_items = list(data_to.materials)
+    elif category == 'Mesh':
+        appended_items = list(data_to.meshes)
+    
+    print(f"Appended {len(appended_items)} {category}(s) from {file_path.name}")
+    return appended_items

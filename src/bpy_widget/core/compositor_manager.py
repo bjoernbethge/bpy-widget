@@ -1,5 +1,5 @@
 """
-Compositor Manager - Zentrale Verwaltung für Node-Chains und Post-Processing
+Compositor Manager - Central management for Node-Chains and Post-Processing
 
 Provides a robust system for managing Blender compositor node trees,
 with support for effect chaining, Viewer Node integration, and GPU acceleration.
@@ -16,7 +16,8 @@ Architecture:
         └─→ Viewer Output (for live preview)
 """
 
-from typing import Optional, List, Tuple, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
+
 import bpy
 from loguru import logger
 
@@ -56,6 +57,7 @@ class CompositorChain:
         if not bpy.context.scene:
             raise RuntimeError("No active scene")
 
+        # Always update scene reference (scene may have changed)
         self.scene = bpy.context.scene
         self.scene.use_nodes = True
         self.scene.render.use_compositing = True
@@ -64,7 +66,12 @@ class CompositorChain:
         if hasattr(self.scene.render, 'use_compositor_gpu'):
             self.scene.render.use_compositor_gpu = True
 
+        # Always get fresh tree reference (may have changed if scene was reset)
         self.tree = self.scene.node_tree
+        
+        # Validate tree is still valid
+        if not self.tree or not hasattr(self.tree, 'nodes'):
+            raise RuntimeError("CompositorNodeTree is invalid")
 
         if clear_existing:
             self.tree.nodes.clear()
@@ -285,8 +292,29 @@ def get_compositor_chain() -> CompositorChain:
         The global CompositorChain instance
     """
     global _compositor_chain
+    
+    # Check if chain exists and is still valid
+    if _compositor_chain is not None:
+        # Validate that the tree is still valid (scene may have been reset)
+        try:
+            if _compositor_chain.tree and hasattr(_compositor_chain.tree, 'nodes'):
+                # Tree is valid, but check if scene changed
+                if _compositor_chain.scene != bpy.context.scene:
+                    # Scene changed, reset chain
+                    _compositor_chain = None
+                else:
+                    # Tree exists and scene matches, but verify it's still accessible
+                    _ = _compositor_chain.tree.nodes  # Test access
+            else:
+                # Tree is invalid, reset chain
+                _compositor_chain = None
+        except (ReferenceError, AttributeError, RuntimeError):
+            # Tree was removed or invalidated, reset chain
+            _compositor_chain = None
+    
     if _compositor_chain is None:
         _compositor_chain = CompositorChain()
+    
     return _compositor_chain
 
 

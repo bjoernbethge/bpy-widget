@@ -9,7 +9,7 @@ import mathutils
 
 
 def setup_camera(distance: float = 10.0, target: Tuple[float, float, float] = (0, 0, 1), 
-                 width: int = 512, height: int = 512) -> bpy.types.Object:
+                 width: int = 1920, height: int = 1080) -> bpy.types.Object:
     """Setup camera with spherical positioning around target
     
     Args:
@@ -70,7 +70,7 @@ def update_camera_position(location: Tuple[float, float, float], target: Tuple[f
 
 def update_camera_spherical(distance: float, angle_x: float, angle_z: float, 
                            target: Tuple[float, float, float] = (0, 0, 1),
-                           width: int = 512, height: int = 512) -> bool:
+                           width: int = 1920, height: int = 1080) -> bool:
     """Update camera position using spherical coordinates
     
     Args:

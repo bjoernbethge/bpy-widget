@@ -1,7 +1,9 @@
 """Pytest configuration and fixtures for bpy-widget tests"""
+import sys
 import warnings
-import pytest
+
 import bpy
+import pytest
 
 # Suppress Blender font and color management warnings in tests
 warnings.filterwarnings('ignore', category=UserWarning, module='imbuf')
@@ -10,7 +12,6 @@ warnings.filterwarnings('ignore', message='.*OpenColorIO.*', category=UserWarnin
 
 # Suppress stderr output from Blender's C++ code (font warnings, etc.)
 # These warnings come from C++ and can't be caught with Python warnings
-import sys
 
 class FilteredStderr:
     """Filter stderr to suppress Blender internal warnings"""

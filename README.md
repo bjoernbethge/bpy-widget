@@ -164,24 +164,35 @@ objects = widget.import_scene_from_parquet("scene_data.parquet")
 repos = widget.list_repositories()
 extensions = widget.list_extensions()
 
-# Enable/disable extensions
-widget.enable_extension("node_wrangler")
-widget.disable_extension("node_wrangler")
+# Enable/disable extensions (by package ID)
+widget.enable_extension("molecularnodes")  # Auto-finds repository
+widget.disable_extension("molecularnodes")
 
-# Install from file
-widget.install_extension_from_file("my_extension.zip")
+# Or specify repository module explicitly
+widget.enable_extension("molecularnodes", repo_module="bl_ext")
 
-# Install directly from URL (e.g., extensions.blender.org)
-# Note: You need the direct download URL to the ZIP file
-widget.install_extension_from_url(
-    "https://extensions.blender.org/download/add-ons/molecularnodes/..."
+# Install extension (universal method - handles ID, URL, or file)
+widget.install_extension("molecularnodes")  # Install by package ID (searches online)
+
+# Install from URL
+widget.install_extension(
+    "https://extensions.blender.org/download/...",
+    pkg_id="molecularnodes"
 )
 
-# Sync and upgrade
-widget.sync_repositories()
-widget.upgrade_extensions()
+# Install from local file
+widget.install_extension("/path/to/extension.zip", pkg_id="my_extension")
 
-# Legacy addon support
+# Or use dedicated file installer
+widget.install_extension_from_file("my_extension.zip")
+
+# Sync and upgrade
+widget.sync_repositories()  # Sync all repositories
+widget.upgrade_extensions()  # Upgrade all extensions
+widget.upgrade_extensions(active_only=True)  # Upgrade only active extensions
+
+# Legacy addon support (pre-4.2 addons)
+legacy_addons = widget.list_legacy_addons()
 widget.enable_legacy_addon("space_view3d_copy_attributes")
 ```
 

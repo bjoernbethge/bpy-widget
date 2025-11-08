@@ -1,11 +1,15 @@
 """
 Rendering functions for bpy widget - Fast & simple
 """
+import os
+import tempfile
 from typing import Optional, Tuple
 
 import bpy
 import numpy as np
 from loguru import logger
+
+from .compositor_manager import get_compositor_chain
 
 # GPU module - available after bpy import
 gpu = None
@@ -191,6 +195,11 @@ def setup_rendering(width: int = 1920, height: int = 1080, engine: str = 'BLENDE
     # Enable GPU compositing for better performance (Blender 4.5+)
     enable_compositor_gpu()
     
+    # Initialize CompositorChain - Post-Processing is ALWAYS active
+    chain = get_compositor_chain()
+    if not chain._initialized:
+        chain.initialize(clear_existing=False)  # Don't clear existing effects if any
+    
     # Basic settings
     scene.render.engine = engine
     scene.render.resolution_x = width
@@ -260,75 +269,36 @@ def render_to_pixels() -> Tuple[Optional[np.ndarray], int, int]:
 
     scene = bpy.context.scene
     
-    # In headless mode, disable compositor and read Render Result directly
-    # Compositor can interfere with Render Result in headless mode
-    if bpy.app.background:
-        old_filepath = scene.render.filepath
-        old_use_nodes = scene.use_nodes
-        old_use_compositing = scene.render.use_compositing
-        try:
-            scene.render.filepath = ""
-            # Disable compositor to prevent interference with Render Result
-            scene.use_nodes = False
-            scene.render.use_compositing = False
-            
-            bpy.ops.render.render(write_still=False)
-            
-            # Try to read Render Result directly (fastest method)
-            render_result = bpy.data.images.get("Render Result")
-            if render_result and render_result.pixels and len(render_result.pixels) > 0:
-                width, height = render_result.size
-                pixels_float = np.array(render_result.pixels[:], dtype=np.float32)
-                pixels_float = pixels_float.reshape((height, width, 4))
-                
-                # Check if pixels are valid (not all white/black/NaN)
-                if (pixels_float.max() > 0.0 and 
-                    pixels_float.min() < 1.0 and 
-                    not np.isnan(pixels_float).any()):
-                    pixels_uint8 = (np.clip(pixels_float, 0.0, 1.0) * 255).astype(np.uint8)
-                    pixels_array = np.flipud(pixels_uint8)
-                    scene.render.filepath = old_filepath
-                    scene.use_nodes = old_use_nodes
-                    scene.render.use_compositing = old_use_compositing
-                    return pixels_array, width, height
-            
-            # Fallback to save_render if Render Result is empty/invalid
-            scene.render.filepath = old_filepath
-            scene.use_nodes = old_use_nodes
-            scene.render.use_compositing = old_use_compositing
-            return _render_to_pixels_via_save_render(scene, scene.render.resolution_x, scene.render.resolution_y, old_filepath)
-        except Exception as e:
-            logger.error(f"Headless render failed: {e}")
-            scene.render.filepath = old_filepath
-            scene.use_nodes = old_use_nodes
-            scene.render.use_compositing = old_use_compositing
-            return None, 0, 0
-    
-    # Ensure compositor is enabled (both settings needed!)
+    # Compositing is ALWAYS active - ensure it's enabled
     scene.use_nodes = True
     scene.render.use_compositing = True  # Critical: must be enabled!
-    tree = scene.node_tree
+    
+    # Use CompositorChain nodes if available (Post-Processing infrastructure)
+    chain = get_compositor_chain()
+    
+    # Ensure CompositorChain is initialized
+    if not chain._initialized:
+        chain.initialize(clear_existing=False)
+    
+    # Use CompositorChain nodes (they're always available when Post-Processing is active)
+    render_layers = chain.render_layers
+    viewer = chain.viewer
+    tree = chain.tree
+    
+    # Validate tree is still valid (may be invalidated if scene changed)
+    if not tree or not hasattr(tree, 'links'):
+        logger.error("CompositorNodeTree is invalid or has been removed")
+        # Re-initialize chain if tree is invalid
+        chain.initialize(clear_existing=False)
+        tree = chain.tree
+        render_layers = chain.render_layers
+        viewer = chain.viewer
+    
+    if not tree or not hasattr(tree, 'links'):
+        logger.error("Failed to get valid compositor tree")
+        return None, 0, 0
+    
     links = tree.links
-    
-    # Find or create Render Layers Node
-    render_layers = None
-    viewer = None
-    
-    for node in tree.nodes:
-        if node.type == 'R_LAYERS':
-            render_layers = node
-        elif node.type == 'VIEWER':
-            viewer = node
-    
-    # Create missing nodes (don't remove existing ones - preserve CompositorChain setup!)
-    if not render_layers:
-        render_layers = tree.nodes.new('CompositorNodeRLayers')
-        render_layers.location = 185, 285
-    
-    if not viewer:
-        viewer = tree.nodes.new('CompositorNodeViewer')
-        viewer.location = 750, 210
-        viewer.use_alpha = False  # Important: disable alpha for correct RGBA output
     
     # Ensure Viewer Node is properly configured
     # Check if Viewer Node has the correct input socket
@@ -340,18 +310,27 @@ def render_to_pixels() -> Tuple[Optional[np.ndarray], int, int]:
     tree.nodes.active = viewer
     
     # Connect Render Layers to Viewer
-    # Remove any existing connections to Viewer's Image input first
-    for link in list(tree.links):
+    # If there are Post-Processing effects (CompositorChain), they should already be connected to Viewer
+    # If not, connect Render Layers directly to Viewer
+    # Check if Viewer already has a connection from effects
+    viewer_has_input = False
+    for link in tree.links:
         if link.to_node == viewer and link.to_socket.name == 'Image':
-            tree.links.remove(link)
+            viewer_has_input = True
+            break
     
-    # Connect Render Layers directly to Viewer
-    # This ensures we get the raw render output (no effects)
-    try:
-        links.new(render_layers.outputs['Image'], viewer.inputs['Image'])
-    except Exception as e:
-        logger.error(f"Failed to connect Render Layers to Viewer: {e}")
-        return None, 0, 0
+    # Only connect Render Layers if Viewer has no input (no effects active)
+    if not viewer_has_input:
+        # Remove any existing connections to Viewer's Image input first
+        for link in list(tree.links):
+            if link.to_node == viewer and link.to_socket.name == 'Image':
+                tree.links.remove(link)
+        
+        try:
+            links.new(render_layers.outputs['Image'], viewer.inputs['Image'])
+        except Exception as e:
+            logger.error(f"Failed to connect Render Layers to Viewer: {e}")
+            return None, 0, 0
     
     # Get Viewer Node image datablock and set resolution BEFORE rendering
     # This ensures the Viewer Node uses the correct resolution
@@ -425,8 +404,6 @@ def _render_to_pixels_via_save_render(scene, width: int, height: int, old_filepa
     save_render() accesses Blender's internal render buffer and writes to file.
     This is the only reliable way to get pixel data in headless mode when Viewer Node doesn't work.
     """
-    import tempfile
-    import os
     
     render_result = bpy.data.images.get("Render Result")
     if not render_result:

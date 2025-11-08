@@ -5,11 +5,20 @@ Direct access to Blender 4.5+ Extensions Platform
 The Extensions Platform was introduced in Blender 4.2 and fully integrated in 4.5.
 This module provides Python API access to manage extensions programmatically.
 """
-import bpy
-from pathlib import Path
-from typing import List, Dict, Optional
-import os
 import json
+import os
+import traceback
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import addon_utils
+import bpy
+import httpx
+
+try:
+    from bl_pkg import repo_cache_store_ensure
+except ImportError:
+    repo_cache_store_ensure = None
 
 # Direct access to extension repos
 def get_repos() -> List:
@@ -38,7 +47,8 @@ def list_extensions(repo_name: Optional[str] = None) -> List[Dict]:
     # Import bl_pkg directly if available
     try:
         # This is internal but the way to access extension metadata
-        from bl_pkg import repo_cache_store_ensure
+        if repo_cache_store_ensure is None:
+            raise ImportError("bl_pkg not available")
         repo_cache_store = repo_cache_store_ensure()
         
         repos = get_repos()
@@ -67,7 +77,6 @@ def list_extensions(repo_name: Optional[str] = None) -> List[Dict]:
                 })
     except ImportError:
         # Fallback - just list enabled extensions
-        import addon_utils
         for addon in bpy.context.preferences.addons:
             if addon.module.startswith('bl_ext.'):
                 parts = addon.module.split('.')
@@ -85,7 +94,6 @@ def is_extension_enabled(repo_module: Optional[str], pkg_id: str) -> bool:
     if not repo_module:
         return False
     
-    import addon_utils
     addon_name = f"bl_ext.{repo_module}.{pkg_id}"
     loaded_default, loaded_state = addon_utils.check(addon_name)
     return loaded_default or loaded_state
@@ -207,7 +215,6 @@ def install_extension(source: str, pkg_id: str = "", enable_on_install: bool = T
 
     except Exception as e:
         print(f"Installation failed: {e}")
-        import traceback
         traceback.print_exc()
         return False
 
@@ -267,7 +274,8 @@ def search_extensions(query: str, limit: int = 50, category: Optional[str] = Non
 
     try:
         # Use Blender's native bl_pkg module
-        from bl_pkg import repo_cache_store_ensure
+        if repo_cache_store_ensure is None:
+            raise ImportError("bl_pkg not available")
 
         # Get repository cache
         cache = repo_cache_store_ensure()
@@ -322,8 +330,6 @@ def search_extensions(query: str, limit: int = 50, category: Optional[str] = Non
         print("bl_pkg module not available - falling back to httpx")
         # Fallback to httpx if bl_pkg is not available
         try:
-            import httpx
-
             api_url = "https://extensions.blender.org/api/v1/extensions/"
             with httpx.Client(timeout=10.0) as client:
                 response = client.get(api_url)
@@ -364,14 +370,12 @@ def search_extensions(query: str, limit: int = 50, category: Optional[str] = Non
 
     except Exception as e:
         print(f"Error searching extensions: {e}")
-        import traceback
         traceback.print_exc()
         return []
 
 # Legacy addon support (pre-4.2)
 def list_legacy_addons() -> List[Dict]:
     """List legacy addons (not using extension system)"""
-    import addon_utils
     addons = []
     
     for mod in addon_utils.modules():

@@ -2,11 +2,14 @@
 Test script for rendering performance optimization
 Tests different rendering methods to find the fastest approach
 """
+import tempfile
 import time
-import bpy
-import numpy as np
+import traceback
 from pathlib import Path
 from typing import Optional, Tuple
+
+import bpy
+import numpy as np
 
 from bpy_widget.core.rendering import (
     setup_rendering,
@@ -22,7 +25,6 @@ from bpy_widget.core.geometry import create_test_cube
 
 def render_to_pixels_file_based() -> Tuple[Optional[np.ndarray], int, int]:
     """Current method: File-based rendering"""
-    import tempfile
     
     if not bpy.context.scene.camera:
         return None, 0, 0
@@ -111,7 +113,6 @@ def render_to_pixels_memory_based() -> Tuple[Optional[np.ndarray], int, int]:
         
     except Exception as e:
         print(f"Memory render failed: {e}")
-        import traceback
         traceback.print_exc()
         return None, 0, 0
 
@@ -123,7 +124,7 @@ def render_to_pixels_gpu_direct() -> Tuple[Optional[np.ndarray], int, int]:
     
     try:
         import gpu
-        from gpu_extras.presets import draw_texture_2d
+        from gpu_extras.presets import draw_texture_2d  # noqa: F401
         
         scene = bpy.context.scene
         width = scene.render.resolution_x
@@ -189,7 +190,6 @@ def render_to_pixels_image_target() -> Tuple[Optional[np.ndarray], int, int]:
         
     except Exception as e:
         print(f"Image target render failed: {e}")
-        import traceback
         traceback.print_exc()
         return render_to_pixels_file_based()
 

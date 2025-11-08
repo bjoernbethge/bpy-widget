@@ -1,8 +1,10 @@
 """Tests for rendering module"""
-import pytest
-import numpy as np
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
+import bpy
+import numpy as np
+import pytest
 
 from bpy_widget.core.rendering import render_to_pixels, setup_rendering
 
@@ -11,7 +13,6 @@ def test_setup_rendering_eevee(clean_scene):
     """Test EEVEE rendering setup"""
     setup_rendering(width=800, height=600, engine='BLENDER_EEVEE_NEXT')
 
-    import bpy
     scene = bpy.context.scene
 
     assert scene.render.engine == 'BLENDER_EEVEE_NEXT'
@@ -24,7 +25,6 @@ def test_setup_rendering_cycles(clean_scene):
     """Test Cycles rendering setup"""
     setup_rendering(width=1920, height=1080, engine='CYCLES')
 
-    import bpy
     scene = bpy.context.scene
 
     assert scene.render.engine == 'CYCLES'

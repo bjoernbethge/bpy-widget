@@ -2,10 +2,13 @@
 Copy missing datafiles (OCIO config, LUTs, fonts) from bundled package to bpy package
 """
 import shutil
+import site
+import sys
 import zipfile
 from pathlib import Path
 from typing import Tuple
 
+import bpy
 from loguru import logger
 
 
@@ -66,7 +69,6 @@ def get_bpy_datafiles_path(require_bpy_import: bool = True) -> Path:
             without importing bpy (may return None if not found).
     """
     if require_bpy_import:
-        import bpy
         
         # Get bpy installation path
         bpy_module_path = Path(bpy.__file__).parent
@@ -81,8 +83,6 @@ def get_bpy_datafiles_path(require_bpy_import: bool = True) -> Path:
         return datafiles
     else:
         # Try to find bpy path without importing it
-        import sys
-        import site
         
         # Check common site-packages locations
         search_paths = site.getsitepackages()

@@ -2,15 +2,21 @@
 Blender widget for Marimo - Simplified high-performance version
 """
 import base64
+import inspect
+import io
 import multiprocessing
 import os
+import sys
 import time
+import traceback
 import typing
+import warnings
 from pathlib import Path
 from typing import Optional
 
 import anywidget
 import numpy as np
+import polars as pl
 import traitlets
 from loguru import logger
 
@@ -33,6 +39,7 @@ from .core.data_import import (
     import_dataframe_as_curve,
     import_multiple_series,
 )
+from .core.data_readers import read_data_file
 from .core.geometry import (
     create_icosphere,
     create_suzanne,
@@ -42,6 +49,7 @@ from .core.geometry import (
 
 # Import new modules
 from .core.io_handlers import (
+    append_from_blend,
     export_alembic,
     export_gltf,
     export_scene_as_parquet,
@@ -50,6 +58,9 @@ from .core.io_handlers import (
     import_gltf,
     import_scene_from_parquet,
     import_usd,
+    link_from_blend,
+    load_blend,
+    save_blend,
 )
 from .core.lighting import (
     setup_lighting,
@@ -74,13 +85,17 @@ from .core.post_processing import (
     setup_extended_compositor,
 )
 from .core.rendering import (
+    get_gpu_backend,
+    initialize_gpu,
     render_to_pixels,
+    set_gpu_backend,
     setup_rendering,
 )
 from .core.scene import (
     clear_scene,
     get_scene,
 )
+from .core.setup_datafiles import setup_datafiles_if_needed
 
 STATIC_DIR = Path(__file__).parent / 'static'
 
@@ -137,7 +152,6 @@ class BpyWidget(anywidget.AnyWidget):
         # Check if we're in marimo (which uses multiprocessing but widgets should work)
         self._is_marimo_context = False
         try:
-            import inspect
             frame = inspect.currentframe()
             while frame:
                 if 'marimo' in str(frame.f_code.co_filename).lower():
@@ -187,31 +201,13 @@ class BpyWidget(anywidget.AnyWidget):
         self.status = "Error: Multiprocessing not supported"
         self.is_initialized = False
 
-        # Create an error message image
-        import numpy as np
+        # Create an error message image (simple colored background)
         error_image = np.full((height, width, 3), [128, 64, 64], dtype=np.uint8)  # Dark red background
 
-        # Add error text
-        try:
-            import cv2
-            cv2.putText(error_image, "BpyWidget Error", (width//2-120, height//2-40),
-                       cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 2)
-            cv2.putText(error_image, "Cannot run in multiprocessing", (width//2-180, height//2),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 1)
-            cv2.putText(error_image, "Use separate Python script", (width//2-140, height//2+30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 1)
-        except ImportError:
-            # Fallback without cv2
-            pass
-
-        # Convert to base64
-        import base64
-        _, buffer = cv2.imencode('.png', error_image) if 'cv2' in locals() else (None, error_image.tobytes())
-        if _ is not None:
-            self.image_data = 'data:image/png;base64,' + base64.b64encode(buffer).decode()
-        else:
-            # Simple fallback without opencv
-            self.image_data = f'data:image/png;base64,{base64.b64encode(error_image.tobytes()).decode()}'
+        # Convert to base64 (raw pixel data)
+        pixels_bytes = error_image.tobytes()
+        image_b64 = base64.b64encode(pixels_bytes).decode('ascii')
+        self.image_data = image_b64
 
     def _init_marimo_mode(self, width: int, height: int):
         """Initialize marimo-compatible mode with actual Blender functionality"""
@@ -238,7 +234,6 @@ class BpyWidget(anywidget.AnyWidget):
                 # Setup missing datafiles BEFORE importing bpy (avoids font warnings)
                 # This fixes "OpenColorIO Error" and "Can't find font" warnings
                 try:
-                    from .core.setup_datafiles import setup_datafiles_if_needed
                     setup_datafiles_if_needed()
                 except Exception as e:
                     logger.debug(f"Could not setup datafiles (optional): {e}")
@@ -249,7 +244,6 @@ class BpyWidget(anywidget.AnyWidget):
                 # Initialize GPU module after bpy import (required for OpenGL/EEVEE)
                 # This makes the gpu module available for EEVEE rendering
                 try:
-                    from .core.rendering import initialize_gpu
                     initialize_gpu()
                 except Exception as e:
                     logger.debug(f"GPU initialization skipped: {e}")
@@ -317,9 +311,6 @@ class BpyWidget(anywidget.AnyWidget):
     @staticmethod
     def _configure_blender_warnings():
         """Configure Blender to suppress non-critical warnings"""
-        import warnings
-        import sys
-        import io
         
         # Suppress Python warnings for missing fonts (blender internal)
         warnings.filterwarnings('ignore', category=UserWarning, module='imbuf')
@@ -455,7 +446,6 @@ class BpyWidget(anywidget.AnyWidget):
             )
             
             # Render (now uses Viewer Node with write_still=False - no file I/O!)
-            import time
             start_time = time.time()
             pixels, w, h = render_to_pixels()
             render_time = int((time.time() - start_time) * 1000)
@@ -471,7 +461,6 @@ class BpyWidget(anywidget.AnyWidget):
         except Exception as e:
             logger.error(f"Camera update failed: {e}")
             self.status = f"Error: {str(e)}"
-            import traceback
             traceback.print_exc()
 
     def _update_display(self, pixels_array: np.ndarray, w: int, h: int):
@@ -572,7 +561,6 @@ class BpyWidget(anywidget.AnyWidget):
             self._just_initialized = False
             self.status = f"Error: {str(e)}"
             logger.error(f"Initialization failed: {e}")
-            import traceback
             traceback.print_exc()
 
     def render(self):
@@ -624,7 +612,6 @@ class BpyWidget(anywidget.AnyWidget):
         Returns:
             True if backend was set successfully
         """
-        from .core.rendering import set_gpu_backend
         result = set_gpu_backend(backend)
         if result:
             self.status = f"GPU backend set to {backend}"
@@ -638,7 +625,6 @@ class BpyWidget(anywidget.AnyWidget):
         Returns:
             Current backend ('VULKAN' or 'OPENGL') or None if unavailable
         """
-        from .core.rendering import get_gpu_backend
         return get_gpu_backend()
 
     # ========== Extension Management ==========
@@ -1130,6 +1116,70 @@ class BpyWidget(anywidget.AnyWidget):
             self.status = f"Parquet import failed: {str(e)}"
             print(f"Parquet import error: {e}")
             return []
+    
+    # ========== Blender File Methods ==========
+    
+    def load_blend(self, file_path: typing.Union[str, Path], load_ui: bool = False):
+        """Load a Blender (.blend) file"""
+        if not self.is_initialized:
+            self.initialize()
+        
+        try:
+            load_blend(file_path, load_ui=load_ui)
+            self.status = f"Loaded {Path(file_path).name}"
+            self._update_camera_and_render()
+        except Exception as e:
+            self.status = f"Load failed: {str(e)}"
+            logger.error(f"Blend load error: {e}")
+    
+    def save_blend(self, file_path: typing.Union[str, Path], compress: bool = True):
+        """Save current scene as Blender (.blend) file"""
+        try:
+            save_blend(file_path, compress=compress)
+            self.status = f"Saved {Path(file_path).name}"
+        except Exception as e:
+            self.status = f"Save failed: {str(e)}"
+            logger.error(f"Blend save error: {e}")
+    
+    def link_from_blend(
+        self,
+        file_path: typing.Union[str, Path],
+        category: str = 'Object',
+        name: Optional[str] = None
+    ):
+        """Link data from another Blender file (reference, not copy)"""
+        if not self.is_initialized:
+            self.initialize()
+        
+        try:
+            linked = link_from_blend(file_path, category=category, name=name)
+            self.status = f"Linked {len(linked)} {category}(s) from {Path(file_path).name}"
+            self._update_camera_and_render()
+            return linked
+        except Exception as e:
+            self.status = f"Link failed: {str(e)}"
+            logger.error(f"Blend link error: {e}")
+            return []
+    
+    def append_from_blend(
+        self,
+        file_path: typing.Union[str, Path],
+        category: str = 'Object',
+        name: Optional[str] = None
+    ):
+        """Append data from another Blender file (copy, not reference)"""
+        if not self.is_initialized:
+            self.initialize()
+        
+        try:
+            appended = append_from_blend(file_path, category=category, name=name)
+            self.status = f"Appended {len(appended)} {category}(s) from {Path(file_path).name}"
+            self._update_camera_and_render()
+            return appended
+        except Exception as e:
+            self.status = f"Append failed: {str(e)}"
+            logger.error(f"Blend append error: {e}")
+            return []
         
     # ========== Data Import Methods (existing) ==========
 
@@ -1155,9 +1205,6 @@ class BpyWidget(anywidget.AnyWidget):
                     df = kwargs.pop('df')
                     obj = import_dataframe_as_curve(df, **kwargs)
                 else:
-                    import polars as pl
-
-                    from .core.data_import import read_data_file
                     df = read_data_file(file_path)
                     obj = import_dataframe_as_curve(df, curve_name=file_path.stem, **kwargs)
                 self.status = f"Imported {file_path.name} as curve"
@@ -1179,7 +1226,6 @@ class BpyWidget(anywidget.AnyWidget):
         except Exception as e:
             self.status = f"Import failed: {str(e)}"
             print(f"Import error: {e}")
-            import traceback
             traceback.print_exc()
 
     def batch_import(
@@ -1202,7 +1248,6 @@ class BpyWidget(anywidget.AnyWidget):
         except Exception as e:
             self.status = f"Batch import failed: {str(e)}"
             print(f"Batch import error: {e}")
-            import traceback
             traceback.print_exc()
 
     def import_data_with_metadata(self, file_path: typing.Union[str, Path], **kwargs):

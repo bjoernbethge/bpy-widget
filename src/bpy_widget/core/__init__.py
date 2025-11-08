@@ -34,6 +34,7 @@ from .geometry import (
     set_smooth_shading,
 )
 from .io_handlers import (
+    append_from_blend,
     export_alembic,
     export_gltf,
     export_scene_as_parquet,
@@ -42,6 +43,9 @@ from .io_handlers import (
     import_gltf,
     import_scene_from_parquet,
     import_usd,
+    link_from_blend,
+    load_blend,
+    save_blend,
 )
 from .lighting import (
     setup_environment_lighting,
@@ -126,6 +130,10 @@ __all__ = [
     'export_alembic',
     'export_scene_as_parquet',
     'import_scene_from_parquet',
+    'load_blend',
+    'save_blend',
+    'link_from_blend',
+    'append_from_blend',
     # Materials
     'create_material',
     'create_preset_material',
