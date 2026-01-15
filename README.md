@@ -14,13 +14,80 @@ Interactive Blender 3D viewport widget for Jupyter notebooks with real-time rend
 ## Features
 
 - 🎨 **Interactive 3D Viewport** - Real-time camera controls with mouse/touch gestures
-- ⚡ **EEVEE Next & Cycles** - Switch between render engines on the fly  
+- ⚡ **EEVEE Next & Cycles** - Switch between render engines on the fly
 - 🚀 **Vulkan Backend** - High-performance GPU acceleration (Blender 4.5+)
 - 🎬 **Post-Processing** - Bloom, vignette, color correction, depth of field, and more
 - 📊 **Data Visualization** - Import CSV/Parquet data as 3D objects (point clouds, curves)
 - 🔄 **Live Updates** - Changes render immediately with optimized debouncing
 - 📦 **Import/Export** - Support for GLTF, USD, Alembic formats
 - 🧩 **Extension Management** - Manage Blender extensions and addons (Blender 4.2+)
+
+## 🎨 Visual Examples
+
+### Interactive 3D Viewport in Jupyter
+The bpy-widget provides a full Blender 3D viewport directly in Jupyter notebooks with real-time Eevee Next rendering:
+
+- **Real-time rendering** with EEVEE Next engine in notebook cells
+- **Interactive viewport** with full 3D manipulation (rotate, zoom, pan)
+- **Zero-copy transfer** for efficient data streaming between Blender and browser
+- **Material support** with full Blender material system including PBR workflows
+
+> 📸 **Screenshots coming soon** - Interactive Blender viewport running in Jupyter!
+
+### Key Features
+
+#### Real-Time Rendering with Vulkan Backend
+Experience 10-15% faster rendering compared to OpenGL with Vulkan backend support:
+
+```python
+from bpy_widget import BpyWidget
+
+widget = BpyWidget(width=800, height=600)
+widget.set_gpu_backend("VULKAN")  # Enable Vulkan for better performance
+widget
+```
+
+#### Material Presets and PBR Rendering
+Create stunning visuals with built-in material presets:
+
+```python
+# Create objects with preset materials
+suzanne = widget.create_suzanne(location=(0, 0, 2))
+gold_mat = widget.create_preset_material("Gold", "gold")
+widget.assign_material(suzanne, gold_mat)
+
+# Add post-processing effects
+widget.setup_extended_compositor()
+widget.add_bloom_glare(intensity=0.8)
+widget.add_depth_of_field(focus_distance=5.0, fstop=2.8)
+```
+
+#### Data Visualization in 3D
+Import and visualize CSV/Parquet data as interactive 3D point clouds:
+
+```python
+# Import point cloud data
+widget.import_data("astronomical_data.csv", as_type="points", point_size=0.1)
+
+# Import time series as 3D curves
+widget.import_data("sensor_data.csv", as_type="curve")
+```
+
+#### Extension Ecosystem Integration
+Seamlessly work with Blender extensions like MolecularNodes:
+
+```python
+# Install and enable extensions
+widget.install_extension("molecularnodes")
+widget.enable_extension("molecularnodes")
+
+# Use extension features in your notebook
+# Extensions integrate directly with the widget's Blender instance
+```
+
+**Live Examples**: See the `examples/` directory for complete interactive notebooks demonstrating all features.
+
+> **Note**: High-quality screenshots and demo GIFs will be added soon. Track progress in [GitHub Issues](https://github.com/bjoernbethge/bpy-widget/issues).
 
 ## Installation
 
